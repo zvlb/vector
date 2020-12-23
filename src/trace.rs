@@ -20,6 +20,10 @@ static SENDER: OnceCell<Sender<Event>> = OnceCell::new();
 pub use tracing_futures::Instrument;
 pub use tracing_tower::{InstrumentableService, InstrumentedService};
 
+fn metrics_layer_enabled() -> bool {
+    matches!(std::env::var("DISABLE_INTERNAL_METRICS_TRACING_LAYER"), Ok(x) if x != "true")
+}
+
 pub fn init(color: bool, json: bool, levels: &str) {
     let (sender, _) = broadcast::channel(99);
     // Ignore errors when setting, since tests can initialize this
@@ -29,24 +33,36 @@ pub fn init(color: bool, json: bool, levels: &str) {
     // previously set up.
     let sender = SENDER.get().unwrap().clone();
 
+    // An escape hatch to disable injecting a mertics layer into tracing.
+    // May be used for performance reasons.
+    // This is a hidden and undocumented functionality.
+    let metrics_layer_enabled = metrics_layer_enabled();
+
     let dispatch = if json {
         let formatter = FmtSubscriber::builder()
             .with_env_filter(levels)
             .json()
             .flatten_event(true)
             .finish()
-            .with(Limit::default())
-            .with(MetricsLayer::new());
-
-        Dispatch::new(BroadcastSubscriber { sender, formatter })
+            .with(Limit::default());
+        if metrics_layer_enabled {
+            let formatter = formatter.with(MetricsLayer::new());
+            Dispatch::new(BroadcastSubscriber { sender, formatter })
+        } else {
+            Dispatch::new(BroadcastSubscriber { sender, formatter })
+        }
     } else {
         let formatter = FmtSubscriber::builder()
             .with_ansi(color)
             .with_env_filter(levels)
             .finish()
-            .with(Limit::default())
-            .with(MetricsLayer::new());
-        Dispatch::new(BroadcastSubscriber { sender, formatter })
+            .with(Limit::default());
+        if metrics_layer_enabled {
+            let formatter = formatter.with(MetricsLayer::new());
+            Dispatch::new(BroadcastSubscriber { sender, formatter })
+        } else {
+            Dispatch::new(BroadcastSubscriber { sender, formatter })
+        }
     };
 
     let _ = LogTracer::init();
