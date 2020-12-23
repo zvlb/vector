@@ -1190,6 +1190,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "criterion-cycles-per-byte"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8d34485a578330c7a91ccf064674f3739a7aebbf3b9d7fd498a6d3e8f7473c96"
+dependencies = [
+ "criterion",
+]
+
+[[package]]
+name = "criterion-linux-perf"
+version = "0.1.0"
+source = "git+https://github.com/bruceg/criterion-linux-perf?rev=cc9ef89129a7d671e72c6c7943ed8574f4d1d9cc#cc9ef89129a7d671e72c6c7943ed8574f4d1d9cc"
+dependencies = [
+ "criterion",
+ "perf-event",
+]
+
+[[package]]
 name = "criterion-plot"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4323,6 +4341,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4fd5641d01c8f18a23da7b6fe29298ff4b55afcccdf78973b24cf3175fee32e"
 
 [[package]]
+name = "perf-event"
+version = "0.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7a1c2678a77d65edf773bd900f5b87f0944ac3421949842a2c6a4efe42d6c66"
+dependencies = [
+ "libc",
+ "perf-event-open-sys",
+]
+
+[[package]]
+name = "perf-event-open-sys"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce9bedf5da2c234fdf2391ede2b90fabf585355f33100689bc364a3ea558561a"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "pest"
 version = "2.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7235,6 +7272,8 @@ dependencies = [
  "codec",
  "colored",
  "criterion",
+ "criterion-cycles-per-byte",
+ "criterion-linux-perf",
  "crossterm",
  "db-key",
  "derivative 2.1.1",

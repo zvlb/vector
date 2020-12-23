@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use criterion_cycles_per_byte::CyclesPerByte;
 use indexmap::IndexMap;
 use remap::prelude::*;
 use vector::transforms::{
@@ -15,7 +16,11 @@ use vector::{
     test_util::runtime,
 };
 
-criterion_group!(benches, benchmark_remap, upcase, downcase, parse_json);
+criterion_group!(
+    name = benches;
+    config = Criterion::default().with_measurement(CyclesPerByte);
+    targets = benchmark_remap, upcase, downcase, parse_json
+);
 criterion_main!(benches);
 
 bench_function! {
@@ -53,7 +58,7 @@ bench_function! {
     }
 }
 
-fn benchmark_remap(c: &mut Criterion) {
+fn benchmark_remap(c: &mut Criterion<CyclesPerByte>) {
     let mut rt = runtime();
     let add_fields_runner = |tform: &mut Box<dyn FunctionTransform>, event: Event| {
         let mut result = Vec::with_capacity(1);

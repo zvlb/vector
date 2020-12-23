@@ -229,6 +229,8 @@ built = { version = "0.4", features = ["git2", "chrono"] }
 base64 = "0.13"
 approx = "0.3.0"
 criterion = "0.3"
+criterion-cycles-per-byte = "0.1.2"
+criterion-linux-perf = { version = "0.1.0", git = "https://github.com/bruceg/criterion-linux-perf", rev = "cc9ef89129a7d671e72c6c7943ed8574f4d1d9cc" }
 tempfile = "3.0.6"
 libc = "0.2.80"
 libz-sys = "1.1.2"
