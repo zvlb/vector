@@ -32,7 +32,7 @@ macro_rules! func_args {
 #[macro_export]
 macro_rules! bench_function {
     ($name:tt => $func:path; $($case:ident { args: $args:expr, want: $(Ok($ok:expr))? $(Err($err:expr))? $(,)* })+) => {
-        fn $name(c: &mut criterion::Criterion<CyclesPerByte>) {
+        fn $name(c: &mut criterion::Criterion<PerfMeasurement>) {
             $(
                 c.bench_function(&format!("{}: {}", stringify!($name), stringify!($case)), |b| {
                     let (expression, want) = $crate::__prep_bench_or_test!($func, $args, $(Ok($crate::Value::from($ok)))? $(Err($err.to_owned()))?);
