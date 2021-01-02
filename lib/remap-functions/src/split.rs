@@ -32,7 +32,7 @@ impl Function for Split {
     fn compile(&self, mut arguments: ArgumentList) -> Result<Box<dyn Expression>> {
         let value = arguments.required("value")?.boxed();
         let pattern = arguments.required("pattern")?.boxed();
-        let limit = arguments.optional("limit").map(Expr::boxed);
+        let limit = arguments.optional("limit").map(Expr::into_dyn);
 
         Ok(Box::new(SplitFn {
             value,

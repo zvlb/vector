@@ -12,6 +12,7 @@ impl Runtime {
 
     /// Given the provided [`Object`], run the provided [`Program`] to
     /// completion.
+    #[tracing::instrument(fields(program = %program), skip(self, object, program))]
     pub fn execute(
         &mut self,
         object: &mut impl Object,

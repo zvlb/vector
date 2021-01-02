@@ -49,7 +49,32 @@ impl IntoIterator for Map {
     }
 }
 
+impl std::fmt::Display for Map {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let multi = if self.expressions.len() > 3 {
+            "\n\t"
+        } else {
+            " "
+        };
+
+        f.write_str("{")?;
+        f.write_str(multi)?;
+
+        let mut iter = self.expressions.iter().peekable();
+        while let Some((k, v)) = iter.next() {
+            let comma = iter.peek().map(|_| ",").unwrap_or_default();
+            let value = v.to_string().replace("\n", "\n\t");
+            write!(f, r#""{}": {}{}"#, k, value, comma)?;
+            f.write_str(multi)?;
+        }
+
+        f.write_str(multi)?;
+        f.write_str("}")
+    }
+}
+
 impl Expression for Map {
+    #[tracing::instrument(fields(map = %self), skip(self, state, object))]
     fn execute(&self, state: &mut state::Program, object: &mut dyn Object) -> Result<Value> {
         self.expressions
             .iter()

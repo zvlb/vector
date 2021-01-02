@@ -33,6 +33,10 @@ struct TRL {
     /// The same result can be achieved by using `.` as the final expression.
     #[structopt(short = "o", long)]
     print_object: bool,
+
+    /// Enable runtime tracing.
+    #[structopt(short, long)]
+    trace: bool,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -59,6 +63,10 @@ fn main() {
 }
 
 fn run(opt: TRL) -> Result<(), Error> {
+    if opt.trace {
+        setup_tracing()
+    }
+
     let objects = read_into_objects(opt.input_file.as_ref())?;
     let program = read_program(opt.program.as_deref(), opt.program_file.as_ref())?;
 
@@ -150,4 +158,18 @@ fn read<R: Read>(mut reader: R) -> Result<String, Error> {
     reader.read_to_string(&mut buffer)?;
 
     Ok(buffer)
+}
+
+fn setup_tracing() {
+    use tracing_subscriber::fmt::{self, format::FmtSpan};
+
+    fmt::fmt()
+        .with_span_events(FmtSpan::CLOSE)
+        .with_level(false)
+        .with_ansi(true)
+        .with_target(false)
+        .with_thread_names(false)
+        .with_thread_ids(false)
+        .pretty()
+        .init();
 }

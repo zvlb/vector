@@ -38,6 +38,37 @@ impl fmt::Debug for Array {
     }
 }
 
+impl std::fmt::Display for Array {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let multi = self.expressions.len() > 3;
+
+        f.write_str("[")?;
+        if multi {
+            f.write_str("\n\t")?;
+        }
+
+        let mut iter = self.expressions.iter().peekable();
+        while let Some(v) = iter.next() {
+            let after = if iter.peek().is_some() {
+                if multi {
+                    ",\n\t"
+                } else {
+                    ", "
+                }
+            } else if multi {
+                ",\n"
+            } else {
+                ""
+            };
+
+            let value = v.to_string().replace("\n", "\n\t");
+            write!(f, r#"{}{}"#, value, after)?;
+        }
+
+        f.write_str("]")
+    }
+}
+
 impl From<Array> for Vec<Expr> {
     fn from(array: Array) -> Self {
         array.expressions
@@ -97,6 +128,7 @@ impl IntoIterator for Array {
 }
 
 impl Expression for Array {
+    #[tracing::instrument(fields(array = %self), skip(self, state, object))]
     fn execute(&self, state: &mut state::Program, object: &mut dyn Object) -> Result<Value> {
         self.expressions
             .iter()

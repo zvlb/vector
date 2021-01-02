@@ -26,7 +26,7 @@ impl Function for Ceil {
 
     fn compile(&self, mut arguments: ArgumentList) -> Result<Box<dyn Expression>> {
         let value = arguments.required("value")?.boxed();
-        let precision = arguments.optional("precision").map(Expr::boxed);
+        let precision = arguments.optional("precision").map(Expr::into_dyn);
 
         Ok(Box::new(CeilFn { value, precision }))
     }

@@ -26,7 +26,7 @@ impl Function for ParseAwsVpcFlowLog {
 
     fn compile(&self, mut arguments: ArgumentList) -> Result<Box<dyn Expression>> {
         let value = arguments.required("value")?.boxed();
-        let format = arguments.optional("format").map(Expr::boxed);
+        let format = arguments.optional("format").map(Expr::into_dyn);
 
         Ok(Box::new(ParseAwsVpcFlowLogFn::new(value, format)))
     }

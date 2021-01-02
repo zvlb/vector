@@ -63,6 +63,7 @@ impl Argument {
 }
 
 impl Expression for Argument {
+    #[tracing::instrument(fields(argument = %self), skip(self, state, object))]
     fn execute(&self, state: &mut state::Program, object: &mut dyn Object) -> Result<Value> {
         let value = self.expression.execute(state, object)?;
 
@@ -82,5 +83,11 @@ impl Expression for Argument {
 
     fn type_def(&self, state: &state::Compiler) -> TypeDef {
         self.expression.type_def(state)
+    }
+}
+
+impl std::fmt::Display for Argument {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} = {}", self.keyword, self.expression)
     }
 }

@@ -16,6 +16,15 @@ pub enum Target {
     Variable(Variable),
 }
 
+impl std::fmt::Display for Target {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Target::Path(path) => path.fmt(f),
+            Target::Variable(variable) => variable.fmt(f),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Assignment {
     target: Target,
@@ -40,6 +49,7 @@ impl Assignment {
 }
 
 impl Expression for Assignment {
+    #[tracing::instrument(fields(assignment = %self), skip(self, state, object))]
     fn execute(&self, state: &mut state::Program, object: &mut dyn Object) -> Result<Value> {
         let value = self.value.execute(state, object)?;
 
@@ -68,6 +78,12 @@ impl Expression for Assignment {
                 .cloned()
                 .expect("path must be assigned via Assignment::new"),
         }
+    }
+}
+
+impl std::fmt::Display for Assignment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} = {}", self.target, self.value)
     }
 }
 

@@ -3,6 +3,7 @@ use crate::{
     Expr, Expression, Result, Value,
 };
 use core::convert::{TryFrom, TryInto};
+use core::iter::IntoIterator;
 use std::collections::HashMap;
 
 // workaround for missing variable argument length.
@@ -60,8 +61,17 @@ impl std::fmt::Debug for Parameter {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct ArgumentList(HashMap<&'static str, Expr>);
+
+impl IntoIterator for ArgumentList {
+    type Item = (&'static str, Expr);
+    type IntoIter = std::collections::hash_map::IntoIter<&'static str, Expr>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
 
 impl ArgumentList {
     pub fn optional(&mut self, keyword: &str) -> Option<Expr> {
@@ -210,6 +220,58 @@ pub trait Function: std::fmt::Debug + Sync + CloneFunction {
     /// resolved `Value` type is checked against the parameter properties.
     fn parameters(&self) -> &'static [Parameter] {
         &[]
+    }
+}
+
+/// Convert any type into a boxed [`Function`].
+pub trait IntoFunction {
+    fn into_function(self) -> Box<dyn Function>;
+}
+
+// A parameterless function created from a regular Rust function using the
+// `IntoFunction` trait.
+#[derive(Clone, Debug)]
+struct SimpleFunc<E: Clone + std::fmt::Debug> {
+    ident: &'static str,
+    expression: E,
+}
+
+impl<E: Clone + 'static> Function for SimpleFunc<E>
+where
+    E: Expression,
+{
+    fn identifier(&self) -> &'static str {
+        self.ident
+    }
+
+    fn compile(&self, _: ArgumentList) -> Result<Box<dyn Expression>> {
+        Ok(Box::new(self.expression.clone()))
+    }
+
+    fn parameters(&self) -> &'static [Parameter] {
+        &[]
+    }
+}
+
+impl<T, E> IntoFunction for T
+where
+    T: Fn() -> E + Send + Sync + 'static,
+    E: Expression + Clone + 'static,
+{
+    fn into_function(self) -> Box<dyn Function> {
+        let ident = {
+            let name = std::any::type_name::<T>();
+
+            match &name.rfind(':') {
+                Some(pos) => &name[pos + 1..name.len()],
+                None => &name[..name.len()],
+            }
+        };
+
+        Box::new(SimpleFunc {
+            ident,
+            expression: self(),
+        })
     }
 }
 

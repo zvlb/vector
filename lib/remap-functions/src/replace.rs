@@ -37,7 +37,7 @@ impl Function for Replace {
         let value = arguments.required("value")?.boxed();
         let pattern = arguments.required("pattern")?.boxed();
         let with = arguments.required("with")?.boxed();
-        let count = arguments.optional("count").map(Expr::boxed);
+        let count = arguments.optional("count").map(Expr::into_dyn);
 
         Ok(Box::new(ReplaceFn {
             value,

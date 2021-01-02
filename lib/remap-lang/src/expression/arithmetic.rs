@@ -15,6 +15,7 @@ impl Arithmetic {
 }
 
 impl Expression for Arithmetic {
+    #[tracing::instrument(fields(arithmetic = %self), skip(self, state, object))]
     fn execute(&self, state: &mut state::Program, object: &mut dyn Object) -> Result<Value> {
         use Operator::*;
 
@@ -70,6 +71,12 @@ impl Expression for Arithmetic {
                 .fallible_unless(Kind::Bytes | Kind::Integer | Kind::Float)
                 .with_constraint(Kind::Bytes | Kind::Integer | Kind::Float),
         }
+    }
+}
+
+impl std::fmt::Display for Arithmetic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {} {}", self.lhs, self.op, self.rhs)
     }
 }
 

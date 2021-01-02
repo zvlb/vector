@@ -4,6 +4,7 @@ use crate::{state, value, Expression, Object, Result, TypeDef, Value};
 pub struct Noop;
 
 impl Expression for Noop {
+    #[tracing::instrument(fields(noop = %self), skip(self))]
     fn execute(&self, _: &mut state::Program, _: &mut dyn Object) -> Result<Value> {
         Ok(Value::Null)
     }
@@ -13,6 +14,12 @@ impl Expression for Noop {
             kind: value::Kind::Null,
             ..Default::default()
         }
+    }
+}
+
+impl std::fmt::Display for Noop {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Value::Null.fmt(f)
     }
 }
 

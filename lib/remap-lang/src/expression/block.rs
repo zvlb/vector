@@ -12,6 +12,7 @@ impl Block {
 }
 
 impl Expression for Block {
+    #[tracing::instrument(fields(block = %self), skip(self, state, object))]
     fn execute(&self, state: &mut state::Program, object: &mut dyn Object) -> Result<Value> {
         self.expressions
             .iter()
@@ -38,6 +39,19 @@ impl Expression for Block {
 
         type_def.fallible = fallible;
         type_def
+    }
+}
+
+impl std::fmt::Display for Block {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("{\n")?;
+
+        for expr in &self.expressions {
+            let value = expr.to_string().replace("\n", "\n\t");
+            write!(f, "\t{}\n", value)?;
+        }
+
+        f.write_str("}")
     }
 }
 

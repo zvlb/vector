@@ -56,6 +56,7 @@ impl<T: Into<Value>> From<T> for Literal {
 }
 
 impl Expression for Literal {
+    #[tracing::instrument(fields(literal = %self), skip(self))]
     fn execute(&self, _: &mut state::Program, _: &mut dyn Object) -> Result<Value> {
         Ok(self.0.clone())
     }
@@ -65,6 +66,12 @@ impl Expression for Literal {
             kind: self.0.kind(),
             ..Default::default()
         }
+    }
+}
+
+impl fmt::Display for Literal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
     }
 }
 

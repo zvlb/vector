@@ -94,8 +94,20 @@ macro_rules! expression_dispatch {
                 }
             }
 
-            pub fn boxed(self) -> Box<dyn Expression> {
+            pub fn into_dyn(self) -> Box<dyn Expression> {
                 Box::new(self)
+            }
+
+            pub fn boxed(self) -> Box<Expr> {
+                Box::new(self)
+            }
+        }
+
+        impl fmt::Display for Expr {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                match self {
+                    $(Expr::$expr(v) => v.fmt(f)),+
+                }
             }
         }
 
@@ -182,7 +194,8 @@ impl<T: Into<Value>> From<T> for Expr {
 
 #[cfg(test)]
 mod tests {
-    use crate::value;
+    use super::*;
+    use crate::{array, expr, lit, value, Operator};
     use value::Kind;
 
     #[test]
@@ -221,6 +234,98 @@ mod tests {
 
         for (expect, this, other) in cases {
             assert_eq!(this | other, expect);
+        }
+    }
+
+    #[test]
+    fn test_display() {
+        use crate::function::IntoFunction;
+
+        let cases: Vec<(Expr, _)> = vec![
+            // literal
+            (lit!("foo").into(), r#""foo""#),
+            (lit!(true).into(), r#"true"#),
+            (lit!(12).into(), r#"12"#),
+            (lit!(42.5).into(), r#"42.5"#),
+
+            // array
+            (
+                array![
+                    "foo",
+                    true,
+                    123,
+                ].into(),
+                r#"["foo", true, 123]"#,
+            ),
+            (
+                array![
+                    "foo",
+                    true,
+                    123,
+                    vec!["baz", "bar"],
+                ].into(),
+                "[\n\t\"foo\",\n\ttrue,\n\t123,\n\t[\"baz\", \"bar\"],\n]",
+            ),
+            (
+                array![
+                    "foo",
+                    true,
+                    123,
+                    vec!["baz", "bar", "baz", "quux"],
+                ].into(),
+                "[\n\t\"foo\",\n\ttrue,\n\t123,\n\t[\n\t\t\"baz\",\n\t\t\"bar\",\n\t\t\"baz\",\n\t\t\"quux\",\n\t],\n]",
+            ),
+
+            // map
+            (
+                array![
+                    "foo",
+                    true,
+                    123,
+                ].into(),
+                r#"["foo", true, 123]"#,
+            ),
+            (
+                array![
+                    "foo",
+                    true,
+                    123,
+                    vec!["baz", "bar"],
+                ].into(),
+                "[\n\t\"foo\",\n\ttrue,\n\t123,\n\t[\"baz\", \"bar\"],\n]",
+            ),
+            (
+                array![
+                    "foo",
+                    true,
+                    123,
+                    vec!["baz", "bar", "baz", "quux"],
+                ].into(),
+                "[\n\t\"foo\",\n\ttrue,\n\t123,\n\t[\n\t\t\"baz\",\n\t\t\"bar\",\n\t\t\"baz\",\n\t\t\"quux\",\n\t],\n]",
+            ),
+
+            // arithmetic
+            (
+                Arithmetic::new(expr!(5).boxed(), expr!(2).boxed(), Operator::Multiply).into(),
+                "5 * 2",
+            ),
+            (
+                Arithmetic::new(expr!(5).boxed(), expr!("foo").boxed(), Operator::Add).into(),
+                r#"5 + "foo""#,
+            ),
+
+            // function
+            (
+                {
+                    fn test_func() -> Noop { Noop }
+                    Function::new("test_func".to_owned(), vec![], &[test_func.into_function()]).unwrap().into()
+                },
+                "test_func()",
+            ),
+        ];
+
+        for (input, output) in cases {
+            assert_eq!(input.to_string(), output.to_owned())
         }
     }
 }

@@ -5068,6 +5068,8 @@ dependencies = [
  "serde_json",
  "structopt",
  "thiserror",
+ "tracing 0.1.22",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -5113,6 +5115,7 @@ dependencies = [
  "regex",
  "serde",
  "thiserror",
+ "tracing 0.1.22",
 ]
 
 [[package]]

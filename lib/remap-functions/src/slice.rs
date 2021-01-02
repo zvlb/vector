@@ -31,7 +31,7 @@ impl Function for Slice {
     fn compile(&self, mut arguments: ArgumentList) -> Result<Box<dyn Expression>> {
         let value = arguments.required("value")?.boxed();
         let start = arguments.required("start")?.boxed();
-        let end = arguments.optional("end").map(Expr::boxed);
+        let end = arguments.optional("end").map(Expr::into_dyn);
 
         Ok(Box::new(SliceFn { value, start, end }))
     }

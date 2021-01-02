@@ -26,7 +26,7 @@ impl Function for ToInt {
 
     fn compile(&self, mut arguments: ArgumentList) -> Result<Box<dyn Expression>> {
         let value = arguments.required("value")?.boxed();
-        let default = arguments.optional("default").map(Expr::boxed);
+        let default = arguments.optional("default").map(Expr::into_dyn);
 
         Ok(Box::new(ToIntFn { value, default }))
     }

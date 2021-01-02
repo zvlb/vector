@@ -2,6 +2,7 @@ use crate::{
     expression::{path, Error as ExprErr, Path},
     state, Error as E, Expression, Object, Result, TypeDef, Value,
 };
+use std::fmt;
 
 #[derive(thiserror::Error, Clone, Debug, PartialEq)]
 pub enum Error {
@@ -37,6 +38,7 @@ impl Variable {
 }
 
 impl Expression for Variable {
+    #[tracing::instrument(fields(variable = %self), skip(self, state))]
     fn execute(&self, state: &mut state::Program, _: &mut dyn Object) -> Result<Value> {
         let mut value = state.variable(&self.ident).cloned().unwrap_or(Value::Null);
 
@@ -64,6 +66,18 @@ impl Expression for Variable {
                 fallible: true,
                 ..Default::default()
             })
+    }
+}
+
+impl fmt::Display for Variable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "${}", self.ident)?;
+
+        if let Some(path) = &self.path {
+            path.fmt(f)?;
+        }
+
+        Ok(())
     }
 }
 

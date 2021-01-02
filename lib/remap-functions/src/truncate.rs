@@ -31,7 +31,7 @@ impl Function for Truncate {
     fn compile(&self, mut arguments: ArgumentList) -> Result<Box<dyn Expression>> {
         let value = arguments.required("value")?.boxed();
         let limit = arguments.required("limit")?.boxed();
-        let ellipsis = arguments.optional("ellipsis").map(Expr::boxed);
+        let ellipsis = arguments.optional("ellipsis").map(Expr::into_dyn);
 
         Ok(Box::new(TruncateFn {
             value,

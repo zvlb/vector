@@ -123,6 +123,21 @@ impl Program {
     }
 }
 
+impl std::fmt::Display for Program {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut iter = self.expressions.iter().peekable();
+
+        while let Some(expr) = iter.next() {
+            expr.fmt(f)?;
+            if iter.peek().is_some() {
+                f.write_str("\n")?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

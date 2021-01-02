@@ -11,6 +11,12 @@ pub struct Not {
     expression: Box<Expr>,
 }
 
+impl std::fmt::Display for Not {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "!{}", self.expression)
+    }
+}
+
 impl Not {
     pub fn new(expression: Box<Expr>) -> Self {
         Self { expression }
@@ -18,6 +24,7 @@ impl Not {
 }
 
 impl Expression for Not {
+    #[tracing::instrument(fields(not = %self), skip(self, state, object))]
     fn execute(&self, state: &mut state::Program, object: &mut dyn Object) -> Result<Value> {
         let boolean = self.expression.execute(state, object)?.try_boolean()?;
 

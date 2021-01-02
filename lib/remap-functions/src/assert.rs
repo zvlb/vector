@@ -25,7 +25,7 @@ impl Function for Assert {
 
     fn compile(&self, mut arguments: ArgumentList) -> Result<Box<dyn Expression>> {
         let condition = arguments.required("condition")?.boxed();
-        let message = arguments.optional("message").map(Expr::boxed);
+        let message = arguments.optional("message").map(Expr::into_dyn);
 
         Ok(Box::new(AssertFn { condition, message }))
     }

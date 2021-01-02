@@ -46,11 +46,11 @@ impl Function for Compact {
 
     fn compile(&self, mut arguments: ArgumentList) -> Result<Box<dyn Expression>> {
         let value = arguments.required("value")?.boxed();
-        let recursive = arguments.optional("recursive").map(Expr::boxed);
-        let null = arguments.optional("null").map(Expr::boxed);
-        let string = arguments.optional("string").map(Expr::boxed);
-        let map = arguments.optional("map").map(Expr::boxed);
-        let array = arguments.optional("array").map(Expr::boxed);
+        let recursive = arguments.optional("recursive").map(Expr::into_dyn);
+        let null = arguments.optional("null").map(Expr::into_dyn);
+        let string = arguments.optional("string").map(Expr::into_dyn);
+        let map = arguments.optional("map").map(Expr::into_dyn);
+        let array = arguments.optional("array").map(Expr::into_dyn);
 
         Ok(Box::new(CompactFn {
             value,

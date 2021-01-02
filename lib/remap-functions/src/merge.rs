@@ -33,7 +33,7 @@ impl Function for Merge {
     fn compile(&self, mut arguments: ArgumentList) -> Result<Box<dyn Expression>> {
         let to = arguments.required_path("to")?;
         let from = arguments.required("from")?.boxed();
-        let deep = arguments.optional("deep").map(Expr::boxed);
+        let deep = arguments.optional("deep").map(Expr::into_dyn);
 
         Ok(Box::new(MergeFn { to, from, deep }))
     }

@@ -3,6 +3,7 @@ use crate::{
     expression, function::ArgumentList, state, Expr, Expression, Function as Fn, Object, Result,
     TypeDef, Value,
 };
+use std::fmt;
 
 #[derive(thiserror::Error, Clone, Debug, PartialEq)]
 pub enum Error {
@@ -31,6 +32,8 @@ pub struct Function {
 
     // only used for `PartialEq` impl
     ident: &'static str,
+
+    arguments: ArgumentList,
 }
 
 impl PartialEq for Function {
@@ -116,18 +119,42 @@ impl Function {
             })
             .collect::<Result<_>>()?;
 
-        let function = definition.compile(list)?;
-        Ok(Self { function, ident })
+        let function = definition.compile(list.clone())?;
+        Ok(Self {
+            function,
+            ident,
+            arguments: list,
+        })
     }
 }
 
 impl Expression for Function {
+    #[tracing::instrument(fields(function = %self), skip(self, state, object))]
     fn execute(&self, state: &mut state::Program, object: &mut dyn Object) -> Result<Value> {
         self.function.execute(state, object)
     }
 
     fn type_def(&self, state: &state::Compiler) -> TypeDef {
         self.function.type_def(state)
+    }
+}
+
+impl fmt::Display for Function {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}({})",
+            self.ident,
+            self.arguments
+                .clone()
+                .into_iter()
+                .map(|(k, v)| match v {
+                    Expr::Argument(arg) => arg.to_string(),
+                    _ => format!("{} = {}", k, v),
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
     }
 }
 
@@ -142,6 +169,7 @@ mod tests {
             Function {
                 function,
                 ident: "foo",
+                arguments: ArgumentList::default(),
             }
         },
         def: TypeDef {

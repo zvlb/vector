@@ -96,6 +96,22 @@ macro_rules! array {
     })
 }
 
+/// Create a `Expr` expression type.
+#[macro_export]
+macro_rules! expr {
+    ([$v:tt]) => {
+        $crate::expression::Expr::Array($crate::array![$v])
+    };
+
+    ({$v:tt}) => {
+        $crate::expression::Expr::Map($crate::map! {$v})
+    };
+
+    ($v:tt) => {
+        $crate::expression::Expr::Literal($crate::lit!($v))
+    };
+}
+
 /// Create a `Literal` expression type.
 #[macro_export]
 macro_rules! lit {

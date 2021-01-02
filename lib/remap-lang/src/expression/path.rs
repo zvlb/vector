@@ -61,6 +61,7 @@ impl Path {
 }
 
 impl Expression for Path {
+    #[tracing::instrument(fields(path = %self), skip(self, object))]
     fn execute(&self, _: &mut state::Program, object: &mut dyn Object) -> Result<Value> {
         let value = object
             .get(&self.path)
