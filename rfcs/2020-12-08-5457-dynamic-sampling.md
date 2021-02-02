@@ -1,90 +1,76 @@
-# RFC 5457 - <2020-12-08> - Dynamic sampling in the `sampler` transform
+# RFC 5457 - <2020-12-08> - More robust sampling using the `sample` transform
 
-The addition of **dynamic sampling** capabilities (**DS** henceforth) to Vector would enable us to
-cover a much broader range of sampling use cases than we currently can. A qualitatively better
-sampling story would enhance Vector's usefulness in the logging domain while also potentially
-putting Vector in a better position to move into domains like distributed tracing.
+Vector currently provides some limited sampling capabilities via the [`sample`][sample] transform. But this transform has some fundamental limitations that make it less robust than some other observability platforms:
+
+* The ability to create sampling "buckets" is limited to matching on the value of a specific key using  [`key_field`][key_field].
+* You can only apply **constant sampling** to buckets, i.e. the [`rate`][rate] that you set remains fixed at 1/N, with no regard for event traffic patterns.
+
+In this RFC I propose two fundamental updates to the `sample` transform:
+
+1. The ability to create sampling buckets in a much more fine-grained way. This includes two new possibilities:
+  1. Using Vector Remap Language comparison expressions to create buckets based on conditions (e.g. `.status == 200 && .level == "warning"`).
+  2. Allow for key-based sampling across multiple fields rather than just one, as with `key_field`.
+2. The addition of [**dynamic sampling**](#dynamic-sampling) capabilities. Dynamic sampling adjusts the sample rate based on traffic patterns, decreasing the sampling rate when events arrive in a bucket more frequently
+
+The addition of these capabilities to the transform would enable us to cover a much broader range of sampling use cases than currently.
 
 ## Scope
 
-This RFC proposes extensions to the [`sampler`][sampler] transform, including new configuration
-parameters and the introduction of the **bucket** concept to Vector.
+This RFC proposes improvements to the [`sample`][sample] transform, including new configuration parameters and the introduction of the **bucket** concept to Vector. These changes would be fully encapsulated at the transform level and needn't have any impact on Vector's core pipeline or any other components. It also wouldn't require any changes to Vector Remap Language, though we should remain open to adding sampling-specific functions should the need or demand arise.
 
-### Goals and non-goals
+### Non-goals
 
-The purpose of the RFC is to achieve consensus around a set of desired features. Thus, the RFC does
-*not* cover:
+The purpose of the RFC is to achieve consensus around a set of desired features. Thus, the RFC does *not* cover:
 
-* Any Vector internals that would affect other components, e.g. the processing pipeline or
-  configuration system
-* Implementation details on the Rust side
-* Finalized names for configuration parameters
-* The specifics of sampling algorithms; consensus around that should be deferred to the development
-  process or another RFC
+* Any Vector internals that would affect other components, e.g. the processing pipeline or configuration system
+* Specific implementation details on the Rust side
+* Finalized names for configuration parameters, which inevitably undergo change during the development process
 
 ### Domains
 
-Dynamic sampling has implications for both logging and tracing. It does *not* have implications for
-metrics, as metrics are already a form of sampling in themselves, e.g. counters reveal a raw number
-of events while saying little about the content of those events.
+Improved sampling has potential implications for both logging and tracing. It does *not* have implications for metrics, as metrics are already a form of sampling in themselves (e.g. counters reveal a raw number of events while saying nothing about the content of those events).
 
-This RFC, however, only covers logging and not tracing. It's possible that tracing would be
-seamlessly covered by the changes proposed here but I lack the domain-specific knowledge to assert
-that, so I will leave it as an open question for a future RFC.
+This RFC, however, only covers logging. The tracing domain is different enough that any overlap between the improvements proposed here and tracing would be little more than happy accidents. Log events, for example, can be treated as isolated atoms, whereas traces by definition consist of spans united by a common identifier. When Vector moves into tracing, we'll need to assume that the sampling question needs to be taken up afresh.
 
 ### Feature parity
 
-It should also be stated that this RFC to my knowledge doesn't propose any features that are not
-available in other systems in the observability space. The goal is more to bring Vector in line with
-what I take to be the state of the art than to push Vector into new territory.
+To my knowledge, this RFC doesn't propose any features that are not available in other systems in the observability space, such as [Cribl]. The goal here is more to bring Vector in line with what I take to be the state of the art than to push Vector into new territory.
 
 ## Background
 
-First, some conceptual introduction. In general, sampling is the art of retaining only a subset of
-an event stream based on supplied criteria. Omitting events is crucial to achieving goals like cost
-cutting. But sampling needs to be done with care lest it compromise the *insight* that your data
-streams can provide. Fortunately, if undertaken intelligently and with the right tools, sampling
-lets you have your cake 🍰 (send fewer events downstream) and eat it too 🍴 (know what you need to
-know about your systems).
+Sampling is the art of retaining only a subset of an event stream based on supplied criteria and omitting the rest. Omitting events is crucial to pursuing goals like cost cutting. But sampling needs to be done with care lest it compromise the *insight* that your data streams can provide. Fortunately, if undertaken intelligently and with the right tools, sampling lets you have your cake 🍰 (send fewer events downstream) and eat it too 🍴 (get the insight you need into your running systems).
 
 Some common rules of thumb for sampling:
 
-* Frequent events should be sampled more heavily than rare events
-* Success events (e.g. `200 OK`) should be sampled more heavily than error events (e.g. `400 Bad
-  Request`)
-* Events closer to business logic (e.g. paying customer transactions) should be sampled less heavily
-  than events related to general system behavior
+* Frequent events should be sampled more heavily than rare events, as frequent events tend to provide less information per event.
+* Success events (e.g. `200 OK`) should be sampled more heavily than error events (e.g. `400 Bad Request`), as error events tend to provide more urgently needed information.
+* Events closer to your business logic (e.g. paying customer transactions) should be sampled less heavily, as they provide more insight into "bottom line" questions than events related to system behavior.
 
 Correspondingly, any robust sampling system should provide the ability to:
 
-* Put events in desired "buckets" based on (preferably granular) criteria
-* Define the sampling behavior of the resulting buckets (more on this below)
+* Put events in desired "buckets" based on arbitrarily complex criteria.
+* Define the sampling behavior of the resulting buckets in a granular way.
 
-### General approaches
+### General approaches to sampling
 
 Sampling approaches fall into two broad categories:
 
-* **Constant sampling** pays heed neither to the content of events nor to their frequency.
-  An example would be omitting 4 in every 5 events in a stream, chosen completely at random.
-* **Dynamic sampling** involves making intelligent decisions about which events to sample using:
-  * The actual *content* of the events (e.g. HTTP status code, user agent, or customer plan).
-  * The *frequency* at which events arise in the stream across a window of time.
-  * Some combination of both.
+* **Constant sampling** applies a fixed sampling rate to a bucket, with regard for neither the content of events nor their frequency. This is what the `sample` transform currently provides.
+* **Dynamic sampling** involves adjusting the sampling rate based on the frequency of events. This approach takes into account the "history" of the event stream inside of a specified time window. You might care enough about, say, `warning`-level logs to sample them only very lightly. But if `warning` events begin to spike, you may want to increase the sample rate to avoid oversampling, i.e. retaining far more events than you need to achieve the desired level of insight.
 
-### Dynamic sampling
+#### Example scenario
 
-The "dynamic" in dynamic sampling means that the sample rate varies in accordance with the "history"
-of the event stream within the current time window. You might care enough about HTTP 500 events to
-sample them only very lightly. But if these events begin to spike, they may quickly turn from signal
-into noise. In that case, the sampling rate should adjust in accordance with that pattern. And not
-only that, you should be able to specify how dramatically it adjusts to those changes.
+You're a sysadmin for a major online publication that serves tons of static content using nginx. You apply constant sampling to HTTP failure logs (HTTP 500s) at a rate of 1/10. An article that your publication is hosting jumps to the top of Hacker News and gets inundated with traffic. Your servers are struggling to handle the load and throwing tons of 500s. Under normal conditions, your servers throw only one 500 a second. Now, they're throwing 1000 500s a second. With the 1/10 sampling rate applied, that means that you're seeing 100 HTTP 500s per second.
+
+The problem is that you don't need to get 100 failure logs per second to know that there's a serious problem. Your threshold is 10 500s per second to take action (spin up another server instance, re-route to a different load balancer, etc.). Anything above that is just noise that will cost you money when those logs are shipped off to $BIGCORP for realtime alerting and analysis. Dynamic sampling would enable you to get the insight you need here (be alerted when the threshold of 500s per second is reached) without oversampling.
+
+The `sample` transform in its current state would not provide this due to two limitations:
 
 ## Motivation
 
-In its current state, the [`sampler`][sampler] transform provides:
+In its current state, the [`sample`][sample] transform provides:
 
-1. Constant sampling, though only implicitly. To achieve constant sampling, you need to specify a
-  [`rate`][rate] but no [`key_field`][key_field]. In that case, all events are hashed the same
+1. Constant sampling, though only implicitly. To achieve constant sampling, you need to specify a [`rate`][rate] but no [`key_field`][key_field]. In that case, all events are hashed the same
   and uniformly sampled at `rate`. This RFC does not propose changing this behavior.
 2. Limited dynamic sampling in the form of **key-based** sampling. With the `sampler` you can:
   * Exclude events from sampling based on their actual content using [`exclude`][exclude].
@@ -97,14 +83,46 @@ In its current state, the [`sampler`][sampler] transform provides:
 This RFC calls for far more robust dynamic sampling as laid out in the [internal
 proposal](#internal-proposal).
 
-### The `swimlanes` alternative
+### The `route` alternative
 
-It should be noted here that a form of bucketing is already possible using [swimlanes], which can
-route events based on their content. It's already possible to put a `sampler` transform downstream
-from a `swimlanes` transform and select a `rate`, `key_field`, etc. for each resulting lane/bucket.
-Requiring two separate transforms to address bread-and-butter sampling use cases, however, provides
-a sub-optimal user experience. Vector users should be able to define bucket conditions and
-properties within a single configuration block.
+It should be noted here that a form of bucketing is already possible using [routes], which can divide events into
+separate streams based on their content. Currently, you can put a `sample` transform downstream from a `route` transform
+and select a `rate`, `key_field`, etc. for each route that you create. Here's an example:
+
+```toml
+[transforms.router]
+type = "route"
+inputs = ["logs"]
+route.success = ".status >= 200 && .status < 300"
+route.failure = ".status >= 400"
+
+[transforms.sample_success]
+input = ["router.success"]
+rate = 100
+
+[transforms.sample_failure]
+input = ["router.failure"]
+rate = 5
+```
+
+This isn't a terrible solution, but requiring two different transforms to address bread-and-butter sampling use cases
+provides a sub-optimal user experience. Vector users should be able to define buckets *and* sampling properties within a
+single configuration block, like so:
+
+```toml
+[transforms.sample_http]
+type = "sample"
+
+[[bucket.success]]
+condition = ".status >= 200 && .status < 300"
+rate = 100
+
+[[bucket.failure]]
+condition = ".status >= 400"
+rate = 5
+```
+
+This method
 
 ## Internal Proposal
 
@@ -347,9 +365,10 @@ TBD
 [4644]: https://github.com/timberio/vector/issues/4644
 [arc]: https://vector.dev/blog/adaptive-request-concurrency
 [crates]: https://crates.io
-[exclude]: https://vector.dev/docs/reference/transforms/sampler/#exclude
-[key_field]: https://vector.dev/docs/reference/transforms/sampler/#key_field
-[rate]: https://vector.dev/docs/reference/transforms/sampler/#rate
-[sampler]: https://vector.dev/docs/reference/transforms/sampler
-[swimlanes]: https://vector.dev/docs/reference/transforms/swimlanes
+[cribl]: https://docs.cribl.io/docs/dynamic-sampling-function
+[exclude]: https://vector.dev/docs/reference/transforms/sample/#exclude
+[key_field]: https://vector.dev/docs/reference/transforms/sample/#key_field
+[rate]: https://vector.dev/docs/reference/transforms/sample/#rate
+[sample]: https://vector.dev/docs/reference/transforms/sample
+[route]: https://vector.dev/docs/reference/transforms/route
 
