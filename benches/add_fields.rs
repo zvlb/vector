@@ -1,14 +1,14 @@
 //! This mod provides useful utilities for writing benchmarks.
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, AxisScale, Criterion, PlotConfiguration};
 
-use vector::Event;
+use vector::{event, Event};
 
 mod test_framework;
 
-use test_framework::transform::BenchmarkGroupExt;
+use self::test_framework::transform::bench::BenchmarkGroupExt;
 
-criterion_group!(benches, benchmark);
+criterion_group!(benches, benchmark, benchmark_qwe);
 criterion_main!(benches);
 
 fn benchmark(c: &mut Criterion) {
@@ -19,7 +19,7 @@ fn benchmark(c: &mut Criterion) {
         e.as_mut_log().insert("message", "test message".to_string());
         e
     };
-    let events: Vec<_> = std::iter::repeat(event).clone().take(3).collect();
+    let events: Vec<_> = std::iter::repeat(event).take(3).collect();
 
     let cases = vec![1, 2, 10, 100, 1000];
 
@@ -75,8 +75,38 @@ fn benchmark(c: &mut Criterion) {
     group.finish();
 }
 
-// mod testevent {
-//     use std::iter::FromIterator;
+fn benchmark_qwe(c: &mut Criterion) {
+    let mut group = c.benchmark_group("merge");
 
-//     pub fn gen<T: FromIterator<Item = Event>>(amount: usize) -> T {}
-// }
+    fn mkevent(s: &str, is_partial: bool) -> Event {
+        let mut event = Event::new_empty_log();
+        event.as_mut_log().insert("message", s.to_string());
+        if is_partial {
+            event
+                .as_mut_log()
+                .insert(event::PARTIAL, "true".to_string());
+        }
+        event
+    }
+
+    let events = vec![mkevent("a", true), mkevent("b", false)]
+        .into_iter()
+        .cycle();
+
+    let cases = vec![2, 20, 200, 1000, 2000, 4000, 20000, 200000];
+
+    for case in cases {
+        let events = events.clone().take(case).collect();
+        group.plot_config(PlotConfiguration::default().summary_scale(AxisScale::Logarithmic));
+        group.bench_task_transform(
+            "by_input_size",
+            Some(case.to_string()),
+            r#"
+                type = "merge"
+            "#,
+            events,
+        );
+    }
+
+    group.finish();
+}

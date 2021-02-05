@@ -613,7 +613,7 @@ remap-benches = ["transforms-add_fields", "transforms-remap", "transforms-coerce
 language-benches = ["sinks-socket", "sources-socket", "transforms-add_fields", "transforms-json_parser", "transforms-regex_parser", "transforms-wasm", "transforms-lua", "transforms-remap"]
 # Separate benching process for metrics due to the nature of the bootstrap procedures.
 metrics-benches = ["sources-socket", "sinks-socket"]
-benches-dev = ["transforms-add_fields", "unix"]
+benches-dev = ["transforms-add_fields", "transforms-merge", "unix"]
 
 
 [[bench]]
