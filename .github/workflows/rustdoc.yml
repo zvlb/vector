@@ -8,21 +8,16 @@
 name: Publish Vector Rustdoc
 
 # Action is triggered only if changes are merged, not just pushed
-# See also the "if" statement in the job definition
 on:
-  pull_request:
-    types:
-      - closed
+  push:
+    branches:
+      - master
 
 jobs:
   trigger-site-build:
     name: Trigger a build of Vector's Rustdoc site (hosted by Netlify)
     runs-on: ubuntu-20.04
-    if: github.event.pull_request.merged == true # Trigger only on successful merge
     steps:
-      - name: Trigger via CURL request
-        # https://github.com/wei/curl
-        uses: wei/curl@v1
-        with:
-          # Trigger a new build via webhook
-          args: -X POST -d {} ${{ secrets.NETLIFY_RUSTDOC_HOOK }}
+      - name: Trigger build via CURL request
+        # Trigger a new build via webhook
+        run: curl -X POST -d "{}" "${{ secrets.NETLIFY_RUSTDOC_HOOK }}"
