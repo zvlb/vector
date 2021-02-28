@@ -1,10 +1,10 @@
 use super::{all_fields, Value};
 use std::collections::BTreeMap;
 
-/// Iterates over all paths in form "a.b[0].c[1]" in alphabetical order.
+/// Iterates over all paths in form `a.b[0].c[1]` in alphabetical order.
 /// It is implemented as a wrapper around `all_fields` to reduce code
 /// duplication.
-pub fn keys<'a>(fields: &'a BTreeMap<String, Value>) -> impl Iterator<Item = String> + 'a {
+pub fn keys(fields: &BTreeMap<String, Value>) -> impl Iterator<Item = String> + '_ {
     all_fields(fields).map(|(k, _)| k)
 }
 

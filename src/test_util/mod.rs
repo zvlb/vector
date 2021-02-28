@@ -5,10 +5,8 @@ use crate::{
 };
 use flate2::read::GzDecoder;
 use futures::{
-    compat::Stream01CompatExt, ready, stream, task::noop_waker_ref, FutureExt, SinkExt, Stream,
-    StreamExt, TryStreamExt,
+    ready, stream, task::noop_waker_ref, FutureExt, SinkExt, Stream, StreamExt, TryStreamExt,
 };
-use futures01::Stream as Stream01;
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use portpicker::pick_unused_port;
 use rand::{thread_rng, Rng};
@@ -38,6 +36,10 @@ use tokio::{
     time::{delay_for, Duration, Instant},
 };
 use tokio_util::codec::{Encoder, FramedRead, FramedWrite, LinesCodec};
+
+const WAIT_FOR_SECS: u64 = 5; // The default time to wait in `wait_for`
+const WAIT_FOR_MIN_MILLIS: u64 = 5; // The minimum time to pause before retrying
+const WAIT_FOR_MAX_MILLIS: u64 = 500; // The maximum time to pause before retrying
 
 pub mod stats;
 
@@ -84,12 +86,12 @@ pub fn open_fixture(path: impl AsRef<Path>) -> crate::Result<serde_json::Value> 
 }
 
 pub fn next_addr() -> SocketAddr {
-    let port = pick_unused_port().unwrap();
+    let port = pick_unused_port();
     SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port)
 }
 
 pub fn next_addr_v6() -> SocketAddr {
-    let port = pick_unused_port().unwrap();
+    let port = pick_unused_port();
     SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)), port)
 }
 
@@ -203,6 +205,7 @@ pub fn random_string(len: usize) -> String {
     thread_rng()
         .sample_iter(&Alphanumeric)
         .take(len)
+        .map(char::from)
         .collect::<String>()
 }
 
@@ -211,7 +214,7 @@ pub fn random_lines(len: usize) -> impl Iterator<Item = String> {
 }
 
 pub fn random_map(max_size: usize, field_len: usize) -> HashMap<String, String> {
-    let size = thread_rng().gen_range(0, max_size);
+    let size = thread_rng().gen_range(0..max_size);
 
     (0..size)
         .map(move |_| (random_string(field_len), random_string(field_len)))
@@ -227,25 +230,6 @@ pub fn random_maps(
 
 pub async fn collect_n<T>(rx: mpsc::Receiver<T>, n: usize) -> Vec<T> {
     rx.take(n).collect().await
-}
-
-pub async fn collect_ready01<S>(rx: S) -> Result<Vec<S::Item>, ()>
-where
-    S: Stream01<Item = Event, Error = ()>,
-{
-    let mut rx = rx.compat();
-
-    let waker = noop_waker_ref();
-    let mut cx = Context::from_waker(waker);
-
-    let mut vec = Vec::new();
-    loop {
-        match rx.poll_next_unpin(&mut cx) {
-            Poll::Ready(Some(Ok(item))) => vec.push(item),
-            Poll::Ready(Some(Err(()))) => return Err(()),
-            Poll::Ready(None) | Poll::Pending => return Ok(vec),
-        }
-    }
 }
 
 pub async fn collect_ready<S>(mut rx: S) -> Vec<S::Item>
@@ -299,11 +283,14 @@ where
     Fut: Future<Output = bool> + Send + 'static,
 {
     let started = Instant::now();
+    let mut delay = WAIT_FOR_MIN_MILLIS;
     while !f().await {
-        delay_for(Duration::from_millis(5)).await;
+        delay_for(Duration::from_millis(delay)).await;
         if started.elapsed() > duration {
             panic!("Timed out while waiting");
         }
+        // quadratic backoff up to a maximum delay
+        delay = (delay * 2).min(WAIT_FOR_MAX_MILLIS);
     }
 }
 
@@ -313,7 +300,7 @@ where
     F: FnMut() -> Fut,
     Fut: Future<Output = bool> + Send + 'static,
 {
-    wait_for_duration(f, Duration::from_secs(5)).await
+    wait_for_duration(f, Duration::from_secs(WAIT_FOR_SECS)).await
 }
 
 // Wait (for 5 secs) for a TCP socket to be reachable
@@ -515,10 +502,7 @@ impl CountReceiver<Event> {
 pub async fn start_topology(
     mut config: Config,
     require_healthy: impl Into<Option<bool>>,
-) -> (
-    RunningTopology,
-    futures01::sync::mpsc::UnboundedReceiver<()>,
-) {
+) -> (RunningTopology, tokio::sync::mpsc::UnboundedReceiver<()>) {
     config.healthchecks.set_require_healthy(require_healthy);
     let diff = ConfigDiff::initial(&config);
     let pieces = topology::build_or_log_errors(&config, &diff, HashMap::new())
@@ -527,16 +511,4 @@ pub async fn start_topology(
     topology::start_validated(config, diff, pieces)
         .await
         .unwrap()
-}
-
-#[macro_export]
-macro_rules! map {
-    () => (
-        ::std::collections::BTreeMap::new()
-    );
-    ($($k:tt: $v:expr),+ $(,)?) => {
-        vec![$(($k.into(), $v.into())),+]
-            .into_iter()
-            .collect::<::std::collections::BTreeMap<_, _>>()
-    };
 }

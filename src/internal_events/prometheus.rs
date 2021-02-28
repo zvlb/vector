@@ -1,8 +1,8 @@
 use super::InternalEvent;
-#[cfg(feature = "sources-prometheus")]
-use crate::sources::prometheus::parser::ParserError;
 use hyper::StatusCode;
 use metrics::{counter, histogram};
+#[cfg(feature = "sources-prometheus")]
+use prometheus_parser::ParserError;
 #[cfg(feature = "sources-prometheus")]
 use std::borrow::Cow;
 use std::time::Instant;
@@ -56,7 +56,7 @@ impl<'a> InternalEvent for PrometheusParseError<'a> {
         debug!(
             message = %format!("Failed to parse response:\n\n{}\n\n", self.body),
             url = %self.url,
-            rate_limit_secs = 10
+            internal_log_rate_secs = 10
         );
     }
 
@@ -130,7 +130,7 @@ impl InternalEvent for PrometheusNoNameError {
     fn emit_logs(&self) {
         error!(
             message = "Decoded timeseries is missing the __name__ field.",
-            rate_limit_secs = 5
+            internal_log_rate_secs = 5
         );
     }
 
@@ -156,5 +156,24 @@ impl InternalEvent for PrometheusServerRequestComplete {
 
     fn emit_metrics(&self) {
         counter!("requests_received_total", 1);
+    }
+}
+
+#[derive(Debug)]
+pub struct PrometheusTemplateRenderingError {
+    pub fields: Vec<String>,
+}
+
+impl InternalEvent for PrometheusTemplateRenderingError {
+    fn emit_logs(&self) {
+        error!(
+            message = "Failed to render templated value; discarding value.",
+            fields = ?self.fields,
+            internal_log_rate_secs = 30,
+        );
+    }
+
+    fn emit_metrics(&self) {
+        counter!("processing_errors_total", 1);
     }
 }

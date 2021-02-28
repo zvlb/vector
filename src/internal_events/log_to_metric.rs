@@ -11,7 +11,7 @@ impl<'a> InternalEvent for LogToMetricFieldNotFound<'a> {
         warn!(
             message = "Field not found.",
             missing_field = %self.field,
-            rate_limit_sec = 30
+            internal_log_rate_secs = 30
         );
     }
 
@@ -33,7 +33,7 @@ impl<'a> InternalEvent for LogToMetricParseFloatError<'a> {
             message = "Failed to parse field as float.",
             field = %self.field,
             error = ?self.error,
-            rate_limit_secs = 30
+            internal_log_rate_secs = 30
         );
     }
 
@@ -54,7 +54,7 @@ impl InternalEvent for LogToMetricTemplateRenderError {
         warn!(
             message = "Failed to render template.",
             %error,
-            rate_limit_secs = 30
+            internal_log_rate_secs = 30
         );
     }
 
@@ -71,7 +71,7 @@ pub(crate) struct LogToMetricTemplateParseError {
 
 impl InternalEvent for LogToMetricTemplateParseError {
     fn emit_logs(&self) {
-        warn!(message = "Failed to parse template.", error = ?self.error, rate_limit_secs = 30);
+        warn!(message = "Failed to parse template.", error = ?self.error, internal_log_rate_secs = 30);
     }
 
     fn emit_metrics(&self) {
