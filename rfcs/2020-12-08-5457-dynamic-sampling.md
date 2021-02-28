@@ -116,7 +116,7 @@ Dynamic sampling would enable you to get the insight you need here—be alerted 
 
 ## Internal Proposal
 
-I propose two major changes to the `sampler` transform:
+I propose two major changes to the `sample` transform:
 
 1. Users should be able to create [named](#named-buckets) and [dynamic](#dynamic-buckets) sampling
   buckets. Named buckets are to be created using VRL conditions, dynamic buckets via a proposed
@@ -126,7 +126,7 @@ I propose two major changes to the `sampler` transform:
 
 I also propose related changes to the [metric output](#metrics) of the transform.
 
-> At the moment, bucketing technically *is* possible using the `route` and `sampler` transforms
+> At the moment, bucketing technically *is* possible using the `route` and `sample` transforms
 > together. In [Appendix A](#appendix-a), I show why this provides a sub-optimal experience.
 
 ### Named buckets
@@ -136,7 +136,7 @@ in the bucket when processed. Here's an example configuration with two named buc
 
 ```toml
 [transforms.sample_customer_data]
-type = "sampler"
+type = "sample"
 
 [[bucket.less_interesting_transactions]]
 condition = """
@@ -162,7 +162,7 @@ though, when you can't know in advance how many buckets you'll need because that
 what your event stream looks like. This is where **dynamic buckets** come into play (this term isn't
 a neologism but I have not encountered it in the observability space).
 
-The key-based sampling that's already supported by the `sampler` transform implicitly provides
+The key-based sampling that's already supported by the `sample` transform implicitly provides
 dynamic bucketing, as each newly encountered value for `key_field` creates a new "bucket." All
 events in that bucket, e.g. all events with a `status_code` of `500`, are sampled at `rate`.
 
@@ -225,7 +225,7 @@ key_fields = ["username", "status"]
 
 #### Order of application
 
-The `sampler` transform should place events in buckets in the order in which the conditions are
+The `sample` transform should place events in buckets in the order in which the conditions are
 specified, much like a `switch` statement in many programming languages. An event ends up
 in the first bucket whose condition it matches; when a match occurs, condition checking ceases.
 
@@ -407,10 +407,12 @@ route.success = ".status >= 200 && .status < 300"
 route.failure = ".status >= 400"
 
 [transforms.sample_success]
+type = "sample"
 input = ["router.success"]
 rate = 100
 
 [transforms.sample_failure]
+type = "sample"
 input = ["router.failure"]
 rate = 5
 ```
