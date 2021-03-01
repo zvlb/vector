@@ -1,10 +1,10 @@
 # RFC 5457 - <2020-12-08> - More robust sampling using the `sample` transform
 
 Vector currently provides some limited sampling capabilities via the [`sample`][sample] transform.
-But this transform has some fundamental limitations that we should seek to overcome:
+But our sampling story currently has two fundamental limitations that we should seek to overcome:
 
-* You can only create sampling "buckets" by matching on a [`key_field`][key_field].
-* You can only apply **constant sampling** to buckets, i.e. the [`rate`][rate] that you set remains
+1. You can only create sampling "buckets" by matching on a [`key_field`][key_field].
+2. You can only apply **constant sampling** to buckets, i.e. the [`rate`][rate] that you set remains
   fixed at 1/N, with no regard for event traffic patterns.
 
 > Sampling **buckets** are sub-streams of an event stream into which events are routed based on the
@@ -15,8 +15,9 @@ In this RFC I propose two updates to the `sample` transform:
 1. The ability to create sampling buckets in a much more fine-grained way. I propose two new
   options:
     1. Using Vector Remap Language conditions to create buckets, e.g.
-       `.status == 200 && .level == "warning"`.
+      `.status == 200 && .level == "warning"`.
     2. Allowing key-based sampling across multiple fields rather than just one, as with `key_field`.
+      I refer to this as [**dynamic bucketing**][dynamic_bucketing] below.
 2. The addition of [**dynamic sampling**][dynamic_sampling] capabilities. Dynamic sampling adjusts
   the sample rate over time based on traffic patterns, decreasing the sampling rate by a specified
   factor when events arrive in a bucket more frequently.
@@ -54,89 +55,43 @@ we'll most likely need to take up the sampling question afresh.
 ### Feature parity
 
 To my knowledge, this RFC doesn't propose any envelope-pushing features that aren't available in
-other systems in the observability space. The goal here is more to bring Vector in line with what I
-take to be the state of the art than to push Vector into new territory, as we've done in other
-domains.
+other systems in the observability space. [Honeycomb], for example, offers dynamic sampling, though
+as far as I can tell only on the backend side. [Cribl] also offers dynamic sampling on the agent
+side, though with limited configuration options.
 
-## Conceptual background
-
-Sampling essentially means retaining only a specific subset of an event stream and omitting the
-rest. The goal of sampling is to reduce costs by cutting out noise while retaining enough signal to
-satisfy the use case at hand. Sample too aggressively and you compromise insight; sample too
-sheepishly and you throw resources away. But if undertaken intelligently and with the right tools,
-sampling lets you have your cake 🍰 (process fewer events) and eat it too 🍴 (get the insight you
-need).
-
-Some common rules of thumb for sampling:
-
-* Frequent events should be sampled more heavily than rare events, as frequent events tend to
-  provide less "signal" per event.
-* Success events (e.g. `200 OK`) should be sampled more heavily than error events (e.g. `400 Bad
-  Request`), as error events tend to provide more urgently needed information.
-* Events closer to your business logic (e.g. paying customer transactions) should be sampled less
-  heavily, as they tend to provide more insight into "bottom line" questions than events related to
-  general system behavior.
-
-### Basic approaches to sampling
-
-Sampling approaches fall into two broad categories: constant and dynamic.
-
-#### Constant sampling
-
-**Constant sampling** applies a fixed sampling rate to a bucket, with no sensitivity to traffic
-patterns. If the bucket sees 1 event per minute and the rate then spikes to 1,000 events per
-minute, the rate doesn't change. This is what the `sample` transform currently provides.
-
-#### Dynamic sampling
-
-**Dynamic sampling** involves adjusting the sampling rate based on the frequency of events. This
-approach takes into account the "history" of the event stream inside of a specified time window.
-Let's say that you have a bucket for `warning`-level logs that you're sampling only very lightly.
-If that bucket suddenly gets hammered with traffic, most use cases  call for increasing the sample
-rate to avoid **oversampling**, which means retaining more events than you need to satisfy your use
-case. The `sample` transform doesn't currently provide this.
-
-#### Example scenario
-
-You're a sysadmin for a major online publication that serves tons of static content using nginx. You
-apply constant sampling to HTTP failure logs (HTTP `500s`) at a rate of 1/10. An article that your
-publication is hosting jumps to the top of Hacker News and gets inundated with traffic. Your servers
-are struggling to handle the load and throwing tons of `500`s. Under normal conditions, your servers
-throw only one `500` a second but now they're throwing *10,000* a second. With the 1/10 sampling
-rate applied, that means that you're now seeing 1,000 HTTP `500`s per second, a massive jump.
-
-The problem is that you don't *need* to get 1,000 failure logs per second to know that there's a
-serious problem. Your threshold for taking action is only 10 `500`s per second, at which point you
-spin up another server instance, re-route to a different load balancer, etc. Anything about 10
-`500`s per second is just noise that will cost you money when those logs are shipped to $BIGCORP for
-realtime alerting and analysis.
-
-Dynamic sampling would enable you to get the insight you need here—be alerted when the threshold of
-`500`s per second is reached—without oversampling.
+The changes proposed here, however, are novel in that I'm not aware of a system that provides both
+highly granular bucketing and dynamic sampling. Furthermore, some of the `dynamic.*` configuration
+options proposed [below](#bucket-behavior), such as [`sensitivity`](#sensitivity) are also novel to
+the best of my knowledge.
 
 ## Internal Proposal
 
+> For the sake of readability I'll jump straight into the proposals. But if you're unfamiliar with
+> the domain, I've provided some basic conceptual background in [Appendix B](#appendix-b) below.
+
 I propose two major changes to the `sample` transform:
 
-1. Users should be able to create [named](#named-buckets) and [dynamic](#dynamic-buckets) sampling
-  buckets. Named buckets are to be created using VRL conditions, dynamic buckets via a proposed
+1. Users should be able to create [named](#named-buckets) and [dynamic](#dynamic-buckets) buckets.
+  Named buckets should be created using VRL conditions and dynamic buckets via a proposed new
   configuration parameter.
 2. Users should be able to assign [sampling behavior](#sampling-behavior) to event buckets,
-  including dynamic sampling behavior.
+  including dynamic sampling behavior, in a highly granular fashion that goes well beyond what's
+  currently available.
 
-I also propose related changes to the [metric output](#metrics) of the transform.
+I also propose related changes to the [metric output](#new-metrics) of the transform.
 
 > At the moment, bucketing technically *is* possible using the `route` and `sample` transforms
-> together. In [Appendix A](#appendix-a), I show why this provides a sub-optimal experience.
+> together. In [Appendix B](#appendix-b), I show why this provides a sub-optimal experience.
 
 ### Named buckets
 
-**Named buckets** are defined using VRL conditions. All events that match the condition are placed
-in the bucket when processed. Here's an example configuration with two named buckets:
+**Named buckets** are defined using VRL conditions. Here's an example configuration with two named
+buckets with two different sampling rates applied to it.
 
 ```toml
 [transforms.sample_customer_data]
 type = "sample"
+inputs = ["customer_logs"]
 
 [[bucket.less_interesting_transactions]]
 condition = """
@@ -152,15 +107,15 @@ condition = """
   .user.plan == "deluxe" && \
   len(.shopping_cart.items) > 10
 """
-rate = 1
+rate = 5
 ```
 
 ### Dynamic buckets
 
 With named buckets you can dictate precisely which buckets you want in advance. There are cases,
-though, when you can't know in advance how many buckets you'll need because that number depends on
-what your event stream looks like. This is where **dynamic buckets** come into play (this term isn't
-a neologism but I have not encountered it in the observability space).
+though, when you can't know in advance which buckets you'll need because that depends on what your
+event stream looks like. This is where **dynamic buckets** come into play (this term isn't
+a neologism *per se* but I haven't encountered it in the observability space).
 
 The key-based sampling that's already supported by the `sample` transform implicitly provides
 dynamic bucketing, as each newly encountered value for `key_field` creates a new "bucket." All
@@ -262,21 +217,23 @@ fields for `key_combination` and each of those fields can have many different va
 with a great many buckets and thereby high memory usage, performance degradation, etc. Controlling
 bucket explosion via setting a hard limit, however, bears the downside that it's not clear which
 bucketing strategy should take over if too many buckets are being created. Thus, for a first
-iteration I propose adding [metrics](#metrics) to the `sampler` transform that would enable users to
+iteration I propose adding [metrics](#metrics) to the `sample` transform that would enable users to
 keep track of bucket creation behavior to inform their decisions but not providing an explicit
 lever.
 
-#### Named + dynamic?
+#### Named + dynamic buckets?
 
 It's not inconceivable that named and dynamic buckets could coexist for the same event stream. It's
-not clear, however, that this behavior serves any particular use case, and thus I propose initially
-allowing for either named or dynamic buckets but not both. If users need to apply both approaches to
-an event stream, they should use swimlanes to split the stream and apply separate `sampler`s.
+not clear, however, that this behavior serves any particular use case and the the [order of
+application](#order-of-application) issues described above would be particularly tricky in this
+case. Thus, I propose allowing either named *or* dynamic buckets but not both. We could reconsider
+this later in response to user demand but it seems unlikely that anyone would want this.
 
 ### Exclusion
 
 The `sample` transform currently enables you to define criteria for excluding events from being
-sampled at all. I propose retaining this option.
+sampled at all. I propose retaining this option. Here's an example of a configuration that would use
+both
 
 ### Bucket behavior
 
@@ -310,7 +267,13 @@ min_event_threshold = 1000
 The base sampling rate for the bucket. If only this parameter is specified, the bucket is constantly
 sampled at a rate of 1/N.
 
-#### `sensitivity`
+#### `dynamic.window`
+
+This specifies the length of the time window during which the sampling rate is calculated. Rates
+can't can be calculated dynamically without a window. I propose 15 seconds as a default but this can
+be hashed out during the development process and in response to user feedback.
+
+#### `dynamic.sensitivity`
 
 If this parameter is specified, that means that a dynamic sampling algorithm is applied to the
 bucket. This determines how aggressively Vector adjusts the sample rate, using `rate` as the
@@ -330,39 +293,34 @@ sampling:
   logarithmic option.
 
 The sensitivity concept I'm proposing here provides much more granularity than Cribl's discrete
-approach. For a frequency of 10,000 events in a given period, a user should be able to
+approach. For a frequency of 10,000 events in a given period, users should have a better choice
+than 8.21 events or 99 events being thrown out.
 
-#### `max_rate` / `min_rate`
+I haven't yet have a specific formula
 
-> Only applicable if `sensitivity` is defined.
+#### `dynamic.max_rate` / `dynamic.min_rate`
 
 Optional parameters to keep the sampling rate within hard limits.
 
-#### `min_event_threshold`
+#### `dynamic.min_frequency`
 
-> Only applicable if `sensitivity` is defined.
+If this event rate (specified per second) is exceeded within a given time window, the `sample`
+transform adjusts the sample rate in the next period. It establishes a minimum threshold for having
+dynamic sampling kick in. Defaults to 0, which means that the rate gets adjusted during every
+period, without any minimum threshold.
 
-The minimum number of events needed, within the `window_secs` time window, to begin adjusting the
-sample rate. Below this threshold, `rate` applies. Defaults to 0, meaning no threshold.
+### New metrics
 
-#### `window_secs`
-
-This specifies the length of the time window, in seconds, during which the sampling rate is
-calculated. Rates can't can be calculated dynamically without a window. I propose 15 seconds as a
-default but this can be hashed out during the development process.
-
-### Metrics
-
-I propose gathering the following additional metrics from the `sampler` transform:
+I propose gathering the following additional metrics from each `sample` transform:
 
 * A gauge for the total number of current buckets in play
-* A counter for the total number of buckets created
+* A counter for the total number of new buckets created
 
 ## Doc-level Proposal
 
 More robust dynamic sampling capabilities would require the following documentation changes:
 
-* Either update the existing `sampler` transform docs to include the new configuration parameters
+* Either update the existing `sample` transform docs to include the new configuration parameters
   plus some additional explanation.
 * A new dynamic sampling guide that walks through specific sampling use cases.
 * A new "Under the Hood" page à la the one we provide for Adaptive Request Concurrency that explains
@@ -376,6 +334,11 @@ this RFC). In terms of implementation, however, I'm unaware of a system built in
 dynamic sampling capabilities, and a survey of the [Crates] ecosystem hasn't yielded any promising
 libraries.
 
+Within our own codebase, however, the [ARC] code likely has some bits that are either directly
+applicable or could serve as a good starting point. Intuitively at least, the two domains are highly
+analogous, as both involve not just windowed rate calculation but also things like sensitivity
+ratios and thresholds.
+
 ## Drawbacks
 
 On the development side, providing more robust dynamic sampling would be far less trivial than
@@ -387,15 +350,84 @@ sampling behavior are less intuitive than some others in the observability realm
 where good documentation and a careful approach to terminology and developer experience would be
 extremely important.
 
+The real risk, I think, could be on the performance side. The computational work required to track
+event frequencies, route events into buckets, and make per-event sampling decisions based on a broad
+set of criteria could add resource usage overhead that compromises or full-on negates other
+benefits of using Vector. It's difficult to tell in advance, and the only "solution" here is to
+benchmark and profile with prejudice.
+
 ## Plan Of Attack
 
-TBD
+This is largely TBD, but I can think of a few initial steps:
+
+1. Determine how much of the [ARC](#prior-art) work is applicable to the problem.
+2. Develop a formula for calculating the current-window rate based on `dynamic.sensitivity` and the
+  other configurable factors (min, max, min threshold, etc.).
 
 <a id="appendix-a"></a>
-## Appendix A: bucketing using `route`
+## Appendix A: Conceptual background
 
-It should be noted here that a form of bucketing is already possible using [routes], which can
-divide events into separate streams based on their content. Currently, you can put a `sample`
+Sampling is essentially the art of retaining only a specific subset of an event stream and omitting
+the rest. The goal of sampling is to reduce costs by cutting out noise while retaining enough signal
+to satisfy the use case at hand. Sample too aggressively and you compromise insight; sample too
+sheepishly and you throw resources away. But if undertaken intelligently and with the right tools,
+sampling lets you have your cake 🍰 (process fewer events) and eat it too 🍴 (get the insight you
+need).
+
+Some common rules of thumb for sampling:
+
+* Frequent events should be sampled more heavily than rare events, as frequent events tend to
+  provide less "signal" per event.
+* Success events (e.g. `200 OK`) should be sampled more heavily than error events (e.g. `400 Bad
+  Request`), as error events tend to provide more urgently needed information.
+* Events closer to your business logic (e.g. paying customer transactions) should be sampled less
+  heavily, as they tend to provide more insight into "bottom line" questions than events related to
+  general system behavior.
+
+### Basic sampling strategies
+
+There are really only two basic sampling strategies: constant and dynamic. These strategies are
+applied on a per-bucket basis, which means that a robust sampling solution needs to allow for
+applying both approaches to the same event stream.
+
+#### Constant sampling
+
+**Constant sampling** applies a fixed sampling rate to a bucket, with no sensitivity to traffic
+patterns. If the bucket sees 1 event per minute and the rate then spikes to 1,000 events per
+minute, the rate doesn't change. This is what the `sample` transform currently provides.
+
+#### Dynamic sampling
+
+**Dynamic sampling** involves adjusting the sampling rate based on the frequency of events. This
+approach takes into account the "history" of the event stream inside of a specified time window.
+Let's say that you have a bucket for `warning`-level logs that you're sampling only very lightly.
+If that bucket suddenly gets hammered with traffic, most use cases  call for increasing the sample
+rate to avoid **oversampling**, which means retaining more events than you need to satisfy your use
+case. The `sample` transform doesn't currently provide this.
+
+#### Example scenario
+
+You're a sysadmin for a major online publication that serves tons of static content using nginx. You
+apply constant sampling to HTTP failure logs (HTTP `500s`) at a rate of 1/10. An article that your
+publication is hosting jumps to the top of Hacker News and gets inundated with traffic. Your servers
+are struggling to handle the load and throwing tons of `500`s. Under normal conditions, your servers
+throw only one `500` a second but now they're throwing *10,000* a second. With the 1/10 sampling
+rate applied, that means that you're now seeing 1,000 HTTP `500`s per second, a massive jump.
+
+The problem is that you don't *need* to get 1,000 failure logs per second to know that there's a
+serious problem. Your threshold for taking action is only 10 `500`s per second, at which point you
+spin up another server instance, re-route to a different load balancer, etc. Anything about 10
+`500`s per second is just noise that will cost you money when those logs are shipped to $BIGCORP for
+realtime alerting and analysis.
+
+Dynamic sampling would enable you to get the insight you need here—be alerted when the threshold of
+`500`s per second is reached—without oversampling.
+
+<a id="appendix-b"></a>
+## Appendix B: bucketing using `route`
+
+It should be noted here that a form of bucketing is already possible using [routes][route], which
+can divide events into separate streams based on their content. Currently, you can put a `sample`
 transform downstream from a `route` transform and select a `rate`, `key_field`, etc. for each route
 that you create. Here's an example:
 
@@ -417,8 +449,8 @@ input = ["router.failure"]
 rate = 5
 ```
 
-This isn't a terrible solution, but requiring two different transforms to address bread-and-butter
-sampling use cases provides a sub-optimal user experience. Vector users should be able to define
+This isn't a terrible solution, but requiring two different transforms to address a bread-and-butter
+sampling use case makes for a sub-optimal user experience. Vector users should be able to define
 buckets *and* sampling properties within a single configuration block, like so:
 
 ```toml
@@ -429,18 +461,23 @@ inputs = ["logs"]
 [[bucket.success]]
 condition = ".status >= 200 && .status < 300"
 rate = 100
+# Other params
 
 [[bucket.failure]]
 condition = ".status >= 400"
 rate = 5
+# Other params
 ```
 
 [4644]: https://github.com/timberio/vector/issues/4644
+[background]: #conceptual-background
 [arc]: https://vector.dev/blog/adaptive-request-concurrency
 [crates]: https://crates.io
 [cribl]: https://docs.cribl.io/docs/dynamic-sampling-function
+[dynamic_bucketing]: #dynamic-bucketing
 [dynamic_sampling]: #dynamic-sampling
 [exclude]: https://vector.dev/docs/reference/transforms/sample/#exclude
+[honeycomb]: https://docs.honeycomb.io/manage-data-volume/sampling/#dynamic-sampling
 [key_field]: https://vector.dev/docs/reference/transforms/sample/#key_field
 [rate]: https://vector.dev/docs/reference/transforms/sample/#rate
 [sample]: https://vector.dev/docs/reference/transforms/sample
