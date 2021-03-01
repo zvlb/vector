@@ -93,7 +93,7 @@ buckets with two different sampling rates applied to it.
 type = "sample"
 inputs = ["customer_logs"]
 
-[[bucket.less_interesting_transactions]]
+[bucket.less_interesting_transactions]
 condition = """
 .status == 200 && \
   !includes(["pro", "enterprise", "deluxe"], .user.plan) && \
@@ -101,7 +101,7 @@ condition = """
 """
 rate = 100
 
-[[bucket.very_interesting_because_catastrophic_transactions]]
+[bucket.very_interesting_because_catastrophic_transactions]
 condition = """
 .status == 500 && \
   .user.plan == "deluxe" && \
@@ -197,7 +197,7 @@ you to specify a named fallthrough bucket:
 
 ```toml
 # Captures all unbucketed events
-[[bucket.fallthrough]]
+[bucket.fallthrough]
 condition = """
 true
 """
@@ -249,12 +249,12 @@ type = "sample"
 inputs = ["logs"]
 
 # Constant sampling
-[[bucket.success]]
+[bucket.success]
 condition = ".status >= 200 && .status < 300"
 rate = 100
 
 # Dynamic sampling
-[[bucket.failure]]
+[bucket.failure]
 condition = ".status >= 400"
 rate = 10
 window_secs = 30
@@ -426,10 +426,9 @@ Dynamic sampling would enable you to get the insight you need here—be alerted 
 <a id="appendix-b"></a>
 ## Appendix B: bucketing using `route`
 
-It should be noted here that a form of bucketing is already possible using [routes][route], which
-can divide events into separate streams based on their content. Currently, you can put a `sample`
-transform downstream from a `route` transform and select a `rate`, `key_field`, etc. for each route
-that you create. Here's an example:
+Bucketing *is* currently possible using the [`route`][route] transform, which divides events into
+separate streams based on their content. You can put a `sample` transform downstream from a `route`
+transform and select a `rate`, `key_field`, etc. for each route that you create. Here's an example:
 
 ```toml
 [transforms.router]
@@ -458,12 +457,12 @@ buckets *and* sampling properties within a single configuration block, like so:
 type = "sample"
 inputs = ["logs"]
 
-[[bucket.success]]
+[bucket.success]
 condition = ".status >= 200 && .status < 300"
 rate = 100
 # Other params
 
-[[bucket.failure]]
+[bucket.failure]
 condition = ".status >= 400"
 rate = 5
 # Other params
