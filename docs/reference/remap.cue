@@ -31,12 +31,13 @@ package metadata
 	description: string
 	errors:      _
 	examples: [#Example, ...#Example]
-	expressions: _
-	features:    _
-	functions:   _
-	literals:    _
-	principles:  _
-	syntax:      _
+	expressions:  _
+	features:     _
+	functions:    _
+	literals:     _
+	principles:   _
+	syntax:       _
+	how_it_works: #HowItWorks
 }
 
 remap: #Remap & {
