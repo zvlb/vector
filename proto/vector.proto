@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+import "event.proto";
+
+package vector;
+
+message EventRequest {
+  event.proto.EventWrapper message = 1;
+}
+
+message EventResponse {
+  event.proto.EventWrapper message = 1;
+}
+
+message EventAck {
+  string message = 1;
+}
+
+service Vector {
+  rpc PushEvents(EventRequest) returns (EventAck) {}
+}

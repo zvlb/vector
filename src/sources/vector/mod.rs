@@ -1,5 +1,5 @@
 pub mod v1;
-//pub mod v2;
+pub mod v2;
 
 use crate::{
     config::{DataType, GenerateConfig, GlobalOptions, Resource, SourceConfig, SourceDescription},
@@ -68,7 +68,7 @@ impl SourceConfig for VectorSourceConfig {
     ) -> crate::Result<super::Source> {
         match self {
             VectorSourceConfig::V1(v1) => v1.config.build(name, globals, shutdown, out).await,
-            //            VectorSourceConfig::V2(v2) => v2.config.build(name, globals, shutdown, out).await, //           VectorSinkConfig::V2(v2) => v2.config.build(),                                                                 //           VectorSinkConfig::V2(v2) => v2.config.build(),
+            //            VectorSourceConfig::V2(v2) => v2.config.build(name, globals, shutdown, out).await,
         }
     }
 
