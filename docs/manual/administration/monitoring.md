@@ -9,15 +9,19 @@ This document will cover monitoring Vector.
 
 ### Accessing
 
-<Tabs
-block={false}
-centered={true}
-groupId="interfaces"
-placeholder="How did you install Vector?"
-select={true}
-size={null}
-values={[{"group":"Package managers","label":"APT","value":"apt"},{"group":"Package managers","label":"DPKG","value":"dpkg"},{"group":"Platforms","label":"Docker CLI","value":"docker-cli"},{"group":"Platforms","label":"Docker Compose","value":"docker-compose"},{"group":"Package managers","label":"Homebrew","value":"homebrew"},{"group":"Package managers","label":"MSI","value":"msi"},{"group":"Package managers","label":"Nix","value":"nix"},{"group":"Package managers","label":"RPM","value":"rpm"},{"group":"Nones","label":"Vector CLI","value":"vector-cli"},{"group":"Package managers","label":"Yum","value":"yum"}]}>
-<TabItem value="apt">
+<Tabs labels={[
+"APT",
+"DPKG",
+"Docker CLI",
+"Docker Compose",
+"Homebrew",
+"MSI",
+"Nix",
+"RPM",
+"Vector CLI",
+"Yum"
+]}>
+<TabItem index={0}>
 
 The Vector package from the APT repository installs Vector as a Systemd service. Logs can be
 accessed through the `journalctl` utility:
@@ -27,7 +31,7 @@ sudo journalctl -fu vector
 ```
 
 </TabItem>
-<TabItem value="dpkg">
+<TabItem index={1}>
 
 The Vector DEB package installs Vector as a Systemd service. Logs can be
 accessed through the `journalctl` utility:
@@ -37,7 +41,7 @@ sudo journalctl -fu vector
 ```
 
 </TabItem>
-<TabItem value="docker-cli">
+<TabItem index={2}>
 
 If you've started Vector through the `docker` CLI you can access Vector's logs
 via the `docker logs` command. First, find the Vector container ID:
@@ -53,7 +57,7 @@ docker logs -f <container-id>
 ```
 
 </TabItem>
-<TabItem value="docker-compose">
+<TabItem index={3}>
 
 If you started Vector through Docker compose you can use the following command
 to access Vector's logs:
@@ -65,7 +69,7 @@ docker-compose logs -f vector
 Replace `vector` with the name of Vector's service if it is not called `vector`.
 
 </TabItem>
-<TabItem value="homebrew">
+<TabItem index={4}>
 
 When Vector is started through Homebrew the logs are automatically routed to
 `/usr/local/var/log/vector.log`. You can tail them with the `tail` utility:
@@ -75,7 +79,7 @@ tail -f /usr/local/var/log/vector.log
 ```
 
 </TabItem>
-<TabItem value="msi">
+<TabItem index={5}>
 
 The Vector MSI package does not install Vector into a proces manager. Therefore,
 Vector must be started by executing the Vector binary directly. Vector's logs
@@ -83,7 +87,7 @@ are written to `STDOUT`. You are in charge of routing `STDOUT`, and this
 determines how you access Vector's logs.
 
 </TabItem>
-<TabItem value="nix">
+<TabItem index={6}>
 
 The Vector Nix package does not install Vector into a proces manager. Therefore,
 Vector must be started by executing the Vector binary directly. Vector's logs
@@ -91,7 +95,7 @@ are written to `STDOUT`. You are in charge of routing `STDOUT`, and this
 determines how you access Vector's logs.
 
 </TabItem>
-<TabItem value="rpm">
+<TabItem index={7}>
 
 The Vector RPM package installs Vector as a Systemd service. Logs can be
 accessed through the `journalctl` utility:
@@ -101,14 +105,14 @@ sudo journalctl -fu vector
 ```
 
 </TabItem>
-<TabItem value="vector-cli">
+<TabItem index={8}>
 
 If you are starting Vector directly from the Vector CLI then all logs will be
 written to `STDOUT`. You are in charge of routing `STDOUT`, and this determines
 how you access Vector's logs.
 
 </TabItem>
-<TabItem value="yum">
+<TabItem index={9}>
 
 The Vector package from the Yum repository installs Vector as a Systemd service. Logs can be
 accessed through the `journalctl` utility:
