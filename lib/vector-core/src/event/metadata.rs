@@ -8,11 +8,22 @@ use shared::EventDataEq;
 /// and `struct LogEvent` types.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct EventMetadata {
+    /// Used to store the datadog API from sources to sinks
+    #[serde(default, skip)]
+    pub datadog_api_key: Option<String>,
     #[serde(default, skip)]
     finalizers: EventFinalizers,
 }
 
 impl EventMetadata {
+    /// Build metadata with datadog api key only
+    pub fn new_with_datadog_api_key(api_key: String) -> Self {
+        Self {
+            datadog_api_key: Some(api_key),
+            finalizers: EventFinalizers::default(),
+        }
+    }
+
     /// Replace the finalizers array with the given one.
     pub fn with_finalizer(mut self, finalizer: EventFinalizer) -> Self {
         self.finalizers = EventFinalizers::new(finalizer);
@@ -22,6 +33,9 @@ impl EventMetadata {
     /// Merge the other `EventMetadata` into this.
     pub fn merge(&mut self, other: Self) {
         self.finalizers.merge(other.finalizers);
+        if self.datadog_api_key.is_none() {
+            self.datadog_api_key = other.datadog_api_key
+        }
     }
 
     /// Update the finalizer(s) status.

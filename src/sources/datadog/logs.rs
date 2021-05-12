@@ -3,7 +3,7 @@ use crate::{
         log_schema, DataType, GenerateConfig, Resource, SourceConfig, SourceContext,
         SourceDescription,
     },
-    event::Event,
+    event::{Event, EventMetadata},
     sources::{
         self,
         util::{decode_body, Encoding, ErrorMessage, HttpSource, HttpSourceAuthConfig},
@@ -98,13 +98,14 @@ impl HttpSource for DatadogLogsSource {
         let api_key = extract_api_key(&header_map, request_path);
 
         decode_body(body, Encoding::Json).map(|mut events| {
-            // Add source type & Datadog API key
+            // Datadog API key in metadata & source type field
             let key = log_schema().source_type_key();
             for event in &mut events {
                 let log = event.as_mut_log();
                 log.try_insert(key, Bytes::from("datadog_logs"));
                 if let Some(k) = &api_key {
-                    log.insert("dd_api_key", k.clone());
+                    log.metadata_mut()
+                        .merge(EventMetadata::new_with_datadog_api_key(k.clone()));
                 }
             }
             events
@@ -239,8 +240,11 @@ mod tests {
             let log = event.as_log();
             assert_eq!(log["message"], "bar".into());
             assert_eq!(log["timestamp"], 456.into());
-            assert_eq!(log["dd_api_key"], "12345678abcdefgh12345678abcdefgh".into());
             assert_eq!(log[log_schema().source_type_key()], "datadog_logs".into());
+            assert_eq!(
+                event.metadata().datadog_api_key.as_ref().unwrap(),
+                "12345678abcdefgh12345678abcdefgh"
+            );
         }
     }
 
@@ -278,8 +282,11 @@ mod tests {
             let log = event.as_log();
             assert_eq!(log["message"], "baz".into());
             assert_eq!(log["timestamp"], 789.into());
-            assert_eq!(log["dd_api_key"], "12345678abcdefgh12345678abcdefgh".into());
             assert_eq!(log[log_schema().source_type_key()], "datadog_logs".into());
+            assert_eq!(
+                event.metadata().datadog_api_key.as_ref().unwrap(),
+                "12345678abcdefgh12345678abcdefgh"
+            );
         }
     }
 
