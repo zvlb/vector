@@ -240,7 +240,7 @@ pub trait HttpSource: Clone + Send + Sync + 'static {
                             .and_then(|body| {
                                 let body_len = body.len();
                                 self.build_events(body, headers, query_parameters, path.as_str())
-                                    .map(|events|(events, body_len))
+                                    .map(|events| (events, body_len))
                             });
 
                         async move {
