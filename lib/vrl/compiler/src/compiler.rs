@@ -27,7 +27,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    pub(super) fn compile(mut self, ast: parser::Program) -> Result<Program, Errors> {
+    pub(super) fn compile(mut self, ast: parser::Program, src: String) -> Result<Program, Errors> {
         let expressions = self
             .compile_root_exprs(ast)
             .into_iter()
@@ -42,6 +42,7 @@ impl<'a> Compiler<'a> {
             expressions,
             fallible: self.fallible,
             abortable: self.abortable,
+            src,
         })
     }
 

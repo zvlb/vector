@@ -18,5 +18,5 @@ pub fn compile_with_state(
 ) -> compiler::Result {
     let ast = parser::parse(source).map_err(|err| vec![Box::new(err) as _])?;
 
-    compiler::compile_with_state(ast, fns, state)
+    compiler::compile_with_state(ast, fns, state, source.to_string())
 }

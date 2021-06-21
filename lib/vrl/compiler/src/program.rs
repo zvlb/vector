@@ -7,6 +7,7 @@ pub struct Program {
     pub(crate) expressions: Vec<Box<dyn Expression>>,
     pub(crate) fallible: bool,
     pub(crate) abortable: bool,
+    pub src: String,
 }
 
 impl Program {

@@ -1,5 +1,6 @@
 use crate::{state, Context, Program, Target, Value};
 use compiler::ExpressionError;
+use diagnostic::{Diagnostic, DiagnosticError, Formatter, Severity};
 use lookup::LookupBuf;
 use std::{error::Error, fmt};
 
@@ -80,9 +81,22 @@ impl Runtime {
             .map(|expr| {
                 expr.resolve(&mut context).map_err(|err| match err {
                     ExpressionError::Abort => Terminate::Abort,
-                    err @ ExpressionError::Error { .. } => Terminate::Error(err.to_string()),
+                    err @ ExpressionError::Error { .. } => {
+                        let formatter = Formatter::new(
+                            &program.src,
+                            vec![Diagnostic::new(
+                                Severity::Error,
+                                err.code(),
+                                err.message(),
+                                err.labels(),
+                                err.notes(),
+                            )],
+                        );
+                        Terminate::Error(formatter.to_string())
+                    }
                 })
             })
+            // could return all errors here
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(values.pop().unwrap_or(Value::Null))

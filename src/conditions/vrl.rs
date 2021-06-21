@@ -94,7 +94,7 @@ impl Condition for Vrl {
     fn check_with_context(&self, event: &Event) -> Result<(), String> {
         let value = self
             .run(event)
-            .map_err(|err| format!("source execution failed: {:#}", err))?;
+            .map_err(|err| format!("source execution failed: {}", err))?;
 
         match value {
             Value::Boolean(v) if v => Ok(()),

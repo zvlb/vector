@@ -26,9 +26,9 @@ pub use paste::paste;
 pub type Result = std::result::Result<Program, compiler::Errors>;
 
 /// Compile a given program [`ast`](parser::Program) into the final [`Program`].
-pub fn compile(ast: parser::Program, fns: &[Box<dyn Function>]) -> Result {
+pub fn compile(ast: parser::Program, fns: &[Box<dyn Function>], src: String) -> Result {
     let mut state = State::default();
-    compile_with_state(ast, fns, &mut state)
+    compile_with_state(ast, fns, &mut state, src)
 }
 
 /// Similar to [`compile`], except that it takes a pre-generated [`State`]
@@ -42,8 +42,9 @@ pub fn compile_with_state(
     ast: parser::Program,
     fns: &[Box<dyn Function>],
     state: &mut State,
+    src: String,
 ) -> Result {
-    compiler::Compiler::new(fns, state).compile(ast)
+    compiler::Compiler::new(fns, state).compile(ast, src)
 }
 
 /// re-export of commonly used parser types.

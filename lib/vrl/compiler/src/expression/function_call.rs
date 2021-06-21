@@ -212,19 +212,27 @@ impl Expression for FunctionCall {
                     Abort => panic!("abort errors must only be defined by `abort` statement"),
                     Error {
                         message,
-                        labels,
+                        mut labels,
                         notes,
-                    } => ExpressionError::Error {
-                        message: format!(
-                            r#"function call error for "{}" at ({}:{}): {}"#,
-                            self.ident,
-                            self.span.start(),
-                            self.span.end(),
-                            message
-                        ),
-                        labels,
-                        notes,
-                    },
+                        ..
+                    } => {
+                        labels.push(Label {
+                            message: format!(r#"function call error for "{}""#, self.ident),
+                            primary: true,
+                            span: self.span,
+                        });
+                        ExpressionError::Error {
+                            message: format!(
+                                r#"function call error for "{}" at ({}:{}): {}"#,
+                                self.ident,
+                                self.span.start(),
+                                self.span.end(),
+                                message
+                            ),
+                            labels,
+                            notes,
+                        }
+                    }
                 }
             })
         })
