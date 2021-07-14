@@ -1817,6 +1817,7 @@ dependencies = [
  "lalrpop-util",
  "lazy_static",
  "lookup",
+ "onig 6.0.0",
  "parsing",
  "percent-encoding",
  "regex",
@@ -2728,7 +2729,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90fb44bc58a4498cb307425b787531381c41b455119033af8f541370362d6c0e"
 dependencies = [
  "glob 0.3.0",
- "onig",
+ "onig 5.0.0",
 ]
 
 [[package]]
@@ -4362,6 +4363,7 @@ dependencies = [
  "funty",
  "lexical-core",
  "memchr",
+ "regex",
  "version_check 0.9.3",
 ]
 
@@ -4563,6 +4565,18 @@ name = "onig"
 version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4e723fc996fff1aeab8f62205f3e8528bf498bdd5eadb2784d2d31f30077947"
+dependencies = [
+ "bitflags",
+ "lazy_static",
+ "libc",
+ "onig_sys",
+]
+
+[[package]]
+name = "onig"
+version = "6.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd91ccd8a02fce2f7e8a86655aec67bc6c171e6f8e704118a0e8c4b866a05a8a"
 dependencies = [
  "bitflags",
  "lazy_static",
@@ -4778,6 +4792,7 @@ dependencies = [
  "bytes 1.0.1",
  "form_urlencoded",
  "nom 6.1.2",
+ "regex",
  "serde",
  "serde_json",
  "shared",

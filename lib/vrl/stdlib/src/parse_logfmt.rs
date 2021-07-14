@@ -1,4 +1,5 @@
-use crate::parse_key_value::{ParseKeyValueFn, Whitespace};
+use crate::parse_key_value::ParseKeyValueFn;
+use parsing::key_value::Whitespace;
 use vrl::prelude::*;
 
 #[derive(Clone, Copy, Debug)]

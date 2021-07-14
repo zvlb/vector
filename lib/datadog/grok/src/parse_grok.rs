@@ -37,7 +37,11 @@ fn apply_grok_rule(source: &str, grok_rule: &GrokRule) -> Result<Value, Error> {
 
     if let Some(ref matches) = grok_rule.pattern.match_against(source) {
         for (name, value) in matches.iter() {
-            let path: LookupBuf = name.parse().expect("path always should be valid");
+            let path: LookupBuf = if name == "." {
+                LookupBuf::root()
+            } else {
+                name.parse().expect("path always should be valid")
+            };
             insert_field(&mut parsed, path, Value::from(value))
                 .map_err(
                     |error| error!(message = "Error updating field value", path = %name, %error),
@@ -243,6 +247,127 @@ mod tests {
             ("%{integer:field:scale(10)}", "1", Ok(Value::Float(10.0))),
             ("%{number:field:scale(0.5)}", "10.0", Ok(Value::Float(5.0))),
         ]);
+    }
+
+    #[test]
+    fn parses_key_value() {
+        test_grok_pattern_without_field(vec![(
+            "%{data::keyvalue}",
+            "key=valueStr",
+            Ok(Value::from(btreemap! {
+                "key" => "valueStr"
+            })),
+        )]);
+        test_grok_pattern_without_field(vec![(
+            "%{data::keyvalue}",
+            "key=<valueStr>",
+            Ok(Value::from(btreemap! {
+                "key" => "valueStr"
+            })),
+        )]);
+        test_grok_pattern_without_field(vec![(
+            "%{data::keyvalue}",
+            r#""key"="valueStr""#,
+            Ok(Value::from(btreemap! {
+                "key" => "valueStr"
+            })),
+        )]);
+        test_grok_pattern_without_field(vec![(
+            "%{data::keyvalue}",
+            r#"'key'='valueStr'"#,
+            Ok(Value::from(btreemap! {
+               "key" => "valueStr"
+            })),
+        )]);
+        test_grok_pattern_without_field(vec![(
+            "%{data::keyvalue}",
+            r#"<key>=<valueStr>"#,
+            Ok(Value::from(btreemap! {
+                "key" => "valueStr"
+            })),
+        )]);
+        test_grok_pattern_without_field(vec![(
+            r#"%{data::keyvalue(":")}"#,
+            r#"key:valueStr"#,
+            Ok(Value::from(btreemap! {
+                "key" => "valueStr"
+            })),
+        )]);
+        test_grok_pattern_without_field(vec![(
+            r#"%{data::keyvalue(":", "/")}"#,
+            r#"key:"/valueStr""#,
+            Ok(Value::from(btreemap! {
+                "key" => "/valueStr"
+            })),
+        )]);
+        test_grok_pattern_without_field(vec![(
+            r#"%{data::keyvalue(":", "/")}"#,
+            r#"/key:/valueStr"#,
+            Ok(Value::from(btreemap! {
+                "/key" => "/valueStr"
+            })),
+        )]);
+        test_grok_pattern_without_field(vec![(
+            r#"%{data::keyvalue(":=", "", "{}")}"#,
+            r#"key:={valueStr}"#,
+            Ok(Value::from(btreemap! {
+                "key" => "valueStr"
+            })),
+        )]);
+        test_grok_pattern_without_field(vec![(
+            r#"%{data::keyvalue("=", "", "", "|")}"#,
+            r#"key1=value1|key2=value2"#,
+            Ok(Value::from(btreemap! {
+                "key1" => "value1",
+                "key2" => "value2",
+            })),
+        )]);
+        test_grok_pattern_without_field(vec![(
+            r#"%{data::keyvalue("=", "", "", "|")}"#,
+            r#"key1="value1"|key2="value2""#,
+            Ok(Value::from(btreemap! {
+                "key1" => "value1",
+                "key2" => "value2",
+            })),
+        )]);
+        test_grok_pattern_without_field(vec![(
+            r#"%{data::keyvalue(":=","","<>")}"#,
+            r#"key1:=valueStr key2:=</valueStr2> key3:="valueStr3""#,
+            Ok(Value::from(btreemap! {
+                "key1" => "valueStr",
+                "key2" => "/valueStr2",
+            })),
+        )]);
+        test_grok_pattern_without_field(vec![(
+            r#"%{data::keyvalue}"#,
+            r#"key1=value1,key2=value2"#,
+            Ok(Value::from(btreemap! {
+                "key1" => "value1",
+                "key2" => "value2",
+            })),
+        )]);
+        test_grok_pattern_without_field(vec![(
+            r#"%{data::keyvalue}"#,
+            r#"key1=value1;key2=value2"#,
+            Ok(Value::from(btreemap! {
+                "key1" => "value1",
+                "key2" => "value2",
+            })),
+        )]);
+    }
+
+    fn test_grok_pattern_without_field(tests: Vec<(&str, &str, Result<Value, Error>)>) {
+        for (filter, k, v) in tests {
+            let rules = parse_grok_rules(&[], &[format!(r#"test {}"#, filter)])
+                .expect("should parse rules");
+            let parsed = parse_grok(k, &rules);
+
+            if v.is_ok() {
+                assert_eq!(parsed.unwrap(), v.unwrap());
+            } else {
+                assert_eq!(parsed, v);
+            }
+        }
     }
 
     fn test_grok_pattern(tests: Vec<(&str, &str, Result<Value, Error>)>) {

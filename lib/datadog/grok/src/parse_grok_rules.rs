@@ -117,12 +117,13 @@ fn parse_grok_rule<'a>(
 
     let rule_def_cloned = rule_def.clone();
     lazy_static! {
-        static ref GROK_PATTER_RE: Regex = Regex::new(r"%\{.+?\}").unwrap();
+        static ref GROK_PATTERN_RE: onig::Regex =
+            onig::Regex::new(r#"%\{([^"\}]|(?<!\+)"(\\"|[^"])*(?<!\+)")+\}"#).unwrap();
     }
     // find all patterns %{}
-    let raw_grok_patterns = GROK_PATTER_RE
+    let raw_grok_patterns = GROK_PATTERN_RE
         .find_iter(rule_def_cloned.as_str())
-        .map(|rule| rule.as_str())
+        .map(|(start, end)| &rule_def_cloned[start..end])
         .collect::<Vec<&str>>();
     // parse them
     let mut grok_patterns = raw_grok_patterns
@@ -266,7 +267,12 @@ fn purify_grok_pattern(
         res.push_str(process_match_function(&mut filters, &pattern)?.as_str());
 
         if let Some(destination) = &pattern.destination {
-            write!(res, ":{}", destination.path).unwrap();
+            if !destination.path.is_empty() {
+                write!(res, ":{}", destination.path).unwrap();
+            } else {
+                // root
+                write!(res, r#":."#).unwrap();
+            }
         }
         res.push('}');
     }

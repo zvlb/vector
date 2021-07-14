@@ -28,6 +28,16 @@ impl Value {
             Value::Null => "<null>".to_string(),
         }
     }
+
+    pub fn is_empty(&self) -> bool {
+        match &self {
+            Value::Boolean(_) | Value::Float(_) | Value::Integer(_) => false,
+            Value::Null => true,
+            Value::Bytes(v) => v.is_empty(),
+            Value::Map(v) => v.is_empty(),
+            Value::Array(v) => v.is_empty(),
+        }
+    }
 }
 
 impl From<Bytes> for Value {
