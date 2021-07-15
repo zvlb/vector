@@ -1,11 +1,11 @@
 use crate::ast::{Function, FunctionArgument};
 use crate::parse_grok::Error as GrokRuntimeError;
 use crate::parse_grok_rules::Error as GrokStaticError;
-use itertools::Itertools;
 use parsing::key_value::Whitespace;
 use parsing::{key_value, query_string, ruby_hash, value::Value};
 use percent_encoding::percent_decode;
 use regex::Regex;
+use shared::btreemap;
 use std::convert::TryFrom;
 use std::iter::FromIterator;
 use std::ops::Deref;
@@ -329,7 +329,7 @@ pub fn apply_filter(value: &Value, filter: &GrokFilter) -> Result<Value, GrokRun
                         )
                     })?
                     .iter()
-                    .filter(|(k, v)| !v.is_empty())
+                    .filter(|(_k, v)| !v.is_empty())
                     .map(|(k, v)| (k.to_owned(), v.to_owned()))
                     .collect(),
                 )),

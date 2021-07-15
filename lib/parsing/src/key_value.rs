@@ -9,7 +9,7 @@ use nom::{
     multi::{many1, many_m_n, separated_list1},
     regexp::str::re_find,
     sequence::{delimited, preceded, terminated, tuple},
-    IResult, Parser,
+    IResult,
 };
 use regex::Regex;
 use std::str::FromStr;
@@ -146,7 +146,7 @@ fn parse_key_value<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
     key_value_delimiter: &'a str,
     field_delimiter: &'a str,
     quotes: &'a [(char, char)],
-    value_re: Option<&'a Regex>,
+    non_quoted_re: Option<&'a Regex>,
     whitespace: Whitespace,
     standalone_key: bool,
 ) -> impl Fn(&'a str) -> IResult<&'a str, (String, Value), E> {
@@ -156,28 +156,34 @@ fn parse_key_value<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
                 Whitespace::Strict => tuple((
                     alt((
                         verify(
-                            preceded(space0, parse_key(key_value_delimiter, quotes)),
+                            preceded(
+                                space0,
+                                parse_key(key_value_delimiter, quotes, non_quoted_re),
+                            ),
                             |s: &str| !(standalone_key && s.contains(field_delimiter)),
                         ),
-                        preceded(space0, parse_key(field_delimiter, quotes)),
+                        preceded(space0, parse_key(field_delimiter, quotes, non_quoted_re)),
                     )),
                     many_m_n(!standalone_key as usize, 1, tag(key_value_delimiter)),
-                    parse_value(field_delimiter, quotes, value_re),
+                    parse_value(field_delimiter, quotes, non_quoted_re),
                 ))(input),
                 Whitespace::Lenient => tuple((
                     alt((
                         verify(
-                            preceded(space0, parse_key(key_value_delimiter, quotes)),
+                            preceded(
+                                space0,
+                                parse_key(key_value_delimiter, quotes, non_quoted_re),
+                            ),
                             |s: &str| !(standalone_key && s.contains(field_delimiter)),
                         ),
-                        preceded(space0, parse_key(field_delimiter, quotes)),
+                        preceded(space0, parse_key(field_delimiter, quotes, non_quoted_re)),
                     )),
                     many_m_n(
                         !standalone_key as usize,
                         1,
                         delimited(space0, tag(key_value_delimiter), space0),
                     ),
-                    parse_value(field_delimiter, quotes, value_re),
+                    parse_value(field_delimiter, quotes, non_quoted_re),
                 ))(input),
             },
             |(field, sep, value): (&str, Vec<&str>, Value)| {
@@ -235,12 +241,12 @@ fn parse_undelimited<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
 
 fn quoted<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
     quotes: &'a [(char, char)],
-    field_terminator: &'a str,
+    delimiter: &'a str,
 ) -> impl Fn(&'a str) -> IResult<&'a str, &'a str, E> {
     move |input| {
         let mut last_err = None;
         for quotes in quotes {
-            match parse_delimited(quotes, field_terminator)(input) {
+            match parse_delimited(quotes, delimiter)(input) {
                 done @ Ok(..) => return done,
                 err @ Err(..) => last_err = Some(err), // continue
             }
@@ -249,7 +255,7 @@ fn quoted<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
     }
 }
 
-fn match_value_or_empty<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
+fn match_re_or_empty<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
     value_re: &'a Regex,
     field_delimiter: &'a str,
 ) -> impl Fn(&'a str) -> IResult<&'a str, &'a str, E> {
@@ -270,13 +276,13 @@ fn match_value_or_empty<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
 fn parse_value<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
     field_delimiter: &'a str,
     quotes: &'a [(char, char)],
-    value_re: Option<&'a Regex>,
+    non_quoted_re: Option<&'a Regex>,
 ) -> impl Fn(&'a str) -> IResult<&'a str, Value, E> {
-    move |input| match value_re {
-        Some(value_re) => map(
+    move |input| match non_quoted_re {
+        Some(re) => map(
             alt((
                 quoted(quotes, field_delimiter),
-                match_value_or_empty(value_re, field_delimiter),
+                match_re_or_empty(re, field_delimiter),
             )),
             Into::into,
         )(input),
@@ -295,12 +301,14 @@ fn parse_value<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
 fn parse_key<'a, E: ParseError<&'a str> + ContextError<&'a str>>(
     key_value_delimiter: &'a str,
     quotes: &'a [(char, char)],
+    non_quoted_re: Option<&'a Regex>,
 ) -> impl Fn(&'a str) -> IResult<&'a str, &'a str, E> {
-    move |input| {
-        alt((
+    move |input| match non_quoted_re {
+        Some(re) => alt((quoted(quotes, key_value_delimiter), re_find(re.to_owned())))(input),
+        None => alt((
             quoted(quotes, key_value_delimiter),
             parse_undelimited(key_value_delimiter),
-        ))(input)
+        ))(input),
     }
 }
 
@@ -501,13 +509,13 @@ mod test {
         // delimited
         assert_eq!(
             Ok(("", "noog")),
-            parse_key::<VerboseError<&str>>("=", &[('"', '"')],)(r#""noog""#)
+            parse_key::<VerboseError<&str>>("=", &[('"', '"')], None)(r#""noog""#)
         );
 
         // undelimited
         assert_eq!(
             Ok(("", "noog")),
-            parse_key::<VerboseError<&str>>("=", &[('"', '"')],)("noog")
+            parse_key::<VerboseError<&str>>("=", &[('"', '"')], None)("noog")
         );
     }
 

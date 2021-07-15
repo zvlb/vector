@@ -152,7 +152,7 @@ fn parse_grok_rule<'a>(
     // replace grok patterns with "purified" ones
     let mut pure_pattern_it = pure_grok_patterns.iter();
     for r in raw_grok_patterns {
-        rule_def = rule_def.replace(r, pure_pattern_it.next().unwrap().as_str());
+        rule_def = rule_def.replacen(r, pure_pattern_it.next().unwrap().as_str(), 1);
     }
 
     // collect all filters to apply later
@@ -267,11 +267,10 @@ fn purify_grok_pattern(
         res.push_str(process_match_function(&mut filters, &pattern)?.as_str());
 
         if let Some(destination) = &pattern.destination {
-            if !destination.path.is_empty() {
-                write!(res, ":{}", destination.path).unwrap();
+            if destination.path.is_empty() {
+                write!(res, r#":."#).unwrap(); // root
             } else {
-                // root
-                write!(res, r#":."#).unwrap();
+                write!(res, ":{}", destination.path).unwrap();
             }
         }
         res.push('}');
