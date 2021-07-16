@@ -410,6 +410,28 @@ mod tests {
             "key:=valueStr",
             Ok(Value::from(btreemap! {})),
         )]);
+        // empty key or null
+        test_grok_pattern_without_field(vec![(
+            "%{data::keyvalue}",
+            "key1= key2=null key3=value3",
+            Ok(Value::from(btreemap! {
+                "key3" => "value3"
+            })),
+        )]);
+        // empty value or null - comma-separated
+        test_grok_pattern_without_field(vec![(
+            "%{data::keyvalue}",
+            "key1=,key2=null,key3= ,key4=value4",
+            Ok(Value::from(btreemap! {
+                "key4" => "value4"
+            })),
+        )]);
+        // empty key
+        test_grok_pattern_without_field(vec![(
+            "%{data::keyvalue}",
+            "=,=value",
+            Ok(Value::from(btreemap! {})),
+        )]);
     }
 
     fn test_grok_pattern_without_field(tests: Vec<(&str, &str, Result<Value, Error>)>) {

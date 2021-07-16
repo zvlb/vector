@@ -117,7 +117,10 @@ fn parse_line<'a>(
             ),
         )(input)
         {
-            Ok((rest, v)) if rest.trim().is_empty() => return Ok((rest, v)),
+            Ok((rest, v)) if rest.trim().is_empty() => {
+                println!("{}", rest);
+                return Ok((rest, v));
+            }
             res => last_result = Some(res), // continue
         }
     }

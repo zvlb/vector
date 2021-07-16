@@ -1,6 +1,7 @@
 use crate::ast::{Function, FunctionArgument};
 use crate::parse_grok::Error as GrokRuntimeError;
 use crate::parse_grok_rules::Error as GrokStaticError;
+use bytes::Bytes;
 use parsing::key_value::Whitespace;
 use parsing::{key_value, query_string, ruby_hash, value::Value};
 use percent_encoding::percent_decode;
@@ -111,7 +112,7 @@ impl TryFrom<&Function> for GrokFilter {
                         _ => return Err(GrokStaticError::InvalidFunctionArguments(f.name.clone())),
                     }
                 } else {
-                    Regex::new(r"^[\w.\-_@]+").unwrap()
+                    Regex::new(r"^[\w.\-_@]*").unwrap()
                 };
 
                 let quotes = if args_len > 2 {
@@ -308,6 +309,7 @@ pub fn apply_filter(value: &Value, filter: &GrokFilter) -> Result<Value, GrokRun
             )),
         },
         GrokFilter::KeyValue(key_value_delimiter, value_re, quotes, field_delimiters) => {
+            let null_value = Value::Bytes("null".into());
             match value {
                 Value::Bytes(bytes) => Ok(Value::from_iter::<Vec<(String, Value)>>(
                     key_value::parse(
@@ -329,7 +331,7 @@ pub fn apply_filter(value: &Value, filter: &GrokFilter) -> Result<Value, GrokRun
                         )
                     })?
                     .iter()
-                    .filter(|(_k, v)| !v.is_empty())
+                    .filter(|(k, v)| !(*v == null_value || v.is_empty() || k.trim().is_empty()))
                     .map(|(k, v)| (k.to_owned(), v.to_owned()))
                     .collect(),
                 )),
