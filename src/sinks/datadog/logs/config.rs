@@ -5,11 +5,12 @@ use crate::sinks::datadog::logs::service;
 use crate::sinks::datadog::ApiKey;
 use crate::sinks::datadog::Region;
 use crate::sinks::util::encoding::EncodingConfigWithDefault;
+use crate::sinks::util::VecBuffer;
 use crate::sinks::util::{
     batch::{Batch, BatchError},
     http::{HttpSink, PartitionHttpSink},
-    BatchConfig, BatchSettings, Compression, JsonArrayBuffer, PartitionBuffer,
-    PartitionInnerBuffer, TowerRequestConfig,
+    BatchConfig, BatchSettings, Compression, PartitionBuffer, PartitionInnerBuffer,
+    TowerRequestConfig,
 };
 use crate::sinks::{Healthcheck, VectorSink};
 use crate::tls::{MaybeTlsSettings, TlsConfig};
@@ -154,7 +155,7 @@ impl SinkConfig for DatadogLogsConfig {
         self.build_sink(
             cx,
             service,
-            JsonArrayBuffer::new(batch_settings.size),
+            VecBuffer::new(batch_settings.size),
             batch_settings.timeout,
         )
     }
