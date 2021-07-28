@@ -5,7 +5,7 @@ use std::convert::TryFrom;
 use vector_core::event::Value;
 
 /// https://docs.datadoghq.com/api/latest/logs/#send-logs
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Debug, Clone)]
 pub(crate) struct LogMsg {
     ddsource: Value,
     ddtags: Value,
@@ -133,5 +133,98 @@ impl EncodedLength for LogMsg {
         }
 
         estimated_length
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
+
+    impl Arbitrary for LogMsg {
+        fn arbitrary(g: &mut Gen) -> Self {
+            LogMsg {
+                ddsource: Value::arbitrary(g),
+                ddtags: Value::arbitrary(g),
+                hostname: Value::arbitrary(g),
+                message: Value::arbitrary(g),
+                service: Value::arbitrary(g),
+                extra: BTreeMap::arbitrary(g),
+            }
+        }
+
+        fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+            let log_msg = self.clone();
+
+            Box::new(
+                log_msg
+                    .extra
+                    .shrink()
+                    .map(move |extra| {
+                        let mut log_msg = log_msg.clone();
+                        log_msg.extra = extra;
+                        log_msg
+                    })
+                    .flat_map(|log_msg| {
+                        log_msg.service.shrink().map(move |svc| {
+                            let mut log_msg = log_msg.clone();
+                            log_msg.service = svc;
+                            log_msg
+                        })
+                    })
+                    .flat_map(|log_msg| {
+                        log_msg.message.shrink().map(move |msg| {
+                            let mut log_msg = log_msg.clone();
+                            log_msg.message = msg;
+                            log_msg
+                        })
+                    })
+                    .flat_map(|log_msg| {
+                        log_msg.hostname.shrink().map(move |hst| {
+                            let mut log_msg = log_msg.clone();
+                            log_msg.hostname = hst;
+                            log_msg
+                        })
+                    })
+                    .flat_map(|log_msg| {
+                        log_msg.ddtags.shrink().map(move |tgs| {
+                            let mut log_msg = log_msg.clone();
+                            log_msg.ddtags = tgs;
+                            log_msg
+                        })
+                    })
+                    .flat_map(|log_msg| {
+                        log_msg.ddsource.shrink().map(move |src| {
+                            let mut log_msg = log_msg.clone();
+                            log_msg.ddsource = src;
+                            log_msg
+                        })
+                    }),
+            )
+        }
+    }
+
+    #[test]
+    fn estimated_size_never_smaller() {
+        // The estimated size of encoding should always be larger or equal to
+        // the actual encoded size for every observed LogMsg.
+        fn inner(msg: LogMsg) -> TestResult {
+            let estimate = msg.encoded_length();
+            let encoding: Vec<u8> = serde_json::to_vec(&msg).unwrap();
+
+            debug_assert!(
+                estimate >= encoding.len(),
+                "{} >= {} | {}",
+                estimate,
+                encoding.len(),
+                serde_json::to_string(&msg).unwrap()
+            );
+            TestResult::passed()
+        }
+
+        QuickCheck::new()
+            .tests(100_000)
+            .max_tests(1_000_000)
+            .quickcheck(inner as fn(LogMsg) -> TestResult);
     }
 }

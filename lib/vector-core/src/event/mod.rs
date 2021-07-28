@@ -21,6 +21,7 @@ pub use value::Value;
 #[cfg(feature = "vrl")]
 pub use vrl_target::VrlTarget;
 
+mod arbitrary;
 pub mod discriminant;
 pub mod error;
 mod finalization;
