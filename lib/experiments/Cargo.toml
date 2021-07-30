@@ -1,0 +1,14 @@
+[package]
+name = "experiments"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+bytes = "1.0.1"
+vector_core = { path = "../vector-core", default-features = false, features = ["vrl"] }
+shared = { path = "../shared" }
+lookup = { path = "../lookup" }
+vrl = { path = "../vrl/core" }
+vrl-stdlib = { path = "../vrl/stdlib" }
+vrl-parser = { path = "../vrl/parser" }
+vrl-compiler = { path = "../vrl/compiler" }
