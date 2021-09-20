@@ -5,8 +5,8 @@ short: Vector installer
 
 The Vector installer enables you to install Vector using a platform-agnostic installation script:
 
-```
-curl --proto '=https' --tlsv1.2 -sSf https://sh.vector.dev | sh
+```shell
+curl --proto '=https' --tlsv1.2 -sSf https://sh.vector.dev | bash
 ```
 
 ## Management
