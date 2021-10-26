@@ -1290,6 +1290,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "criterion-linux-perf"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31541cfbf7e42d4192ede20152d365a928f41a00eccf3b6a7558209a215f6163"
+dependencies = [
+ "criterion",
+ "perf-event",
+]
+
+[[package]]
 name = "criterion-plot"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4408,6 +4418,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4fd5641d01c8f18a23da7b6fe29298ff4b55afcccdf78973b24cf3175fee32e"
 
 [[package]]
+name = "perf-event"
+version = "0.4.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5396562cd2eaa828445d6d34258ae21ee1eb9d40fe626ca7f51c8dccb4af9d66"
+dependencies = [
+ "libc",
+ "perf-event-open-sys",
+]
+
+[[package]]
+name = "perf-event-open-sys"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce9bedf5da2c234fdf2391ede2b90fabf585355f33100689bc364a3ea558561a"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "pest"
 version = "2.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6780,9 +6809,9 @@ dependencies = [
 
 [[package]]
 name = "tinyvec"
-version = "1.3.1"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "848a1e1181b9f6753b5e96a092749e29b11d19ede67dfbbd6c7dc7e0f49b5338"
+checksum = "f83b2a3d4d9091d0abd7eba4dc2710b1718583bd4d8992e2190720ea38f391f7"
 dependencies = [
  "tinyvec_macros",
 ]
@@ -7555,6 +7584,7 @@ dependencies = [
  "colored",
  "console-subscriber",
  "criterion",
+ "criterion-linux-perf",
  "crossterm 0.21.0",
  "csv",
  "dashmap",
@@ -7666,6 +7696,7 @@ dependencies = [
  "syslog",
  "syslog_loose",
  "tempfile",
+ "tinyvec",
  "tokio",
  "tokio-openssl",
  "tokio-postgres",
