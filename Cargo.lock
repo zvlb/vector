@@ -7696,7 +7696,6 @@ dependencies = [
  "syslog",
  "syslog_loose",
  "tempfile",
- "tinyvec",
  "tokio",
  "tokio-openssl",
  "tokio-postgres",

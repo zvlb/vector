@@ -5,7 +5,6 @@ use criterion_linux_perf::{PerfMeasurement, PerfMode};
 use smallvec::SmallVec;
 use std::mem::{drop, size_of};
 use std::time::Duration;
-use tinyvec::TinyVec;
 
 #[derive(Default)]
 struct LogEvent([u64; 9]);
@@ -20,10 +19,7 @@ enum EventsVec {
     Logs(Vec<LogEvent>),
 }
 enum EventsSmallVec {
-    Logs(SmallVec<[LogEvent; 1]>),
-}
-enum EventsTinyVec {
-    Logs(TinyVec<[LogEvent; 1]>),
+    Logs(SmallVec<[LogEvent; 8]>),
 }
 
 impl EventsVec {
@@ -35,14 +31,6 @@ impl EventsVec {
 }
 
 impl EventsSmallVec {
-    fn into_iter(self) -> impl Iterator<Item = Event> {
-        match self {
-            Self::Logs(v) => v.into_iter().map(Event::Log),
-        }
-    }
-}
-
-impl EventsTinyVec {
     fn into_iter(self) -> impl Iterator<Item = Event> {
         match self {
             Self::Logs(v) => v.into_iter().map(Event::Log),
@@ -66,14 +54,6 @@ fn make_smallvec(events: usize) -> EventsSmallVec {
     EventsSmallVec::Logs(result)
 }
 
-fn make_tinyvec(events: usize) -> EventsTinyVec {
-    let mut result = TinyVec::with_capacity(events);
-    for _ in 0..events {
-        result.push(LogEvent([events as u64; 9]));
-    }
-    EventsTinyVec::Logs(result)
-}
-
 fn count_vec(events: EventsVec) -> u64 {
     events
         .into_iter()
@@ -94,21 +74,10 @@ fn count_smallvec(events: EventsSmallVec) -> u64 {
         .sum()
 }
 
-fn count_tinyvec(events: EventsTinyVec) -> u64 {
-    events
-        .into_iter()
-        .map(|event| match event {
-            Event::Log(log) => log.0[1],
-            Event::Metric(metric) => metric.0[1],
-        })
-        .sum()
-}
-
 fn timeit<T: 'static + Measurement>(crit: &mut Criterion<T>) {
     dbg!(size_of::<Event>());
     dbg!(size_of::<EventsVec>());
     dbg!(size_of::<EventsSmallVec>());
-    dbg!(size_of::<EventsTinyVec>());
 
     let mut group = crit.benchmark_group("Creation");
     for size in [1, 2, 4, 8, 16] {
@@ -117,9 +86,6 @@ fn timeit<T: 'static + Measurement>(crit: &mut Criterion<T>) {
         });
         group.bench_with_input(BenchmarkId::new("SV", size), &size, |bencher, &size| {
             bencher.iter(|| drop(make_smallvec(size)))
-        });
-        group.bench_with_input(BenchmarkId::new("TV", size), &size, |bencher, &size| {
-            bencher.iter(|| drop(make_tinyvec(size)))
         });
     }
     group.finish();
@@ -135,9 +101,6 @@ fn timeit<T: 'static + Measurement>(crit: &mut Criterion<T>) {
                 count_smallvec,
                 BatchSize::SmallInput,
             )
-        });
-        group.bench_with_input(BenchmarkId::new("TV", size), &size, |bencher, &size| {
-            bencher.iter_batched(|| make_tinyvec(size), count_tinyvec, BatchSize::SmallInput)
         });
     }
     group.finish();
