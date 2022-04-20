@@ -58,8 +58,13 @@ pub struct ValueIter<'a> {
 #[derive(Debug, PartialEq, Eq)]
 #[allow(clippy::enum_variant_names)]
 pub enum IterItem<'a> {
+    /// A single primitive value.
     Value(&'a mut Value),
+
+    /// A key/value combination.
     KeyValue(&'a mut String, &'a mut Value),
+
+    /// An index/value combination.
     IndexValue(usize, &'a mut Value),
 }
 
@@ -90,6 +95,7 @@ impl<'a> ValueIter<'a> {
 impl<'a> Iterator for ValueIter<'a> {
     type Item = IterItem<'a>;
 
+    #[allow(clippy::deref_addrof)]
     fn next(&mut self) -> Option<Self::Item> {
         // If this returns true, it means on the last iteration cycle, we've
         // returned a collection value-type, and the caller asked to recurse
@@ -390,16 +396,19 @@ mod tests {
 
             match item {
                 IterItem::Value(value) => values.push(value.clone()),
-                IterItem::KeyValue(key, value) => match value {
-                    Value::Array(array) => {
+                IterItem::KeyValue(key, value) => {
+                    if let Value::Array(array) = value {
                         array.clear();
                         cleared = true;
                     }
-                    _ => {}
-                },
+                }
                 IterItem::IndexValue(index, value) => values.push(value.clone()),
             }
         }
+
+        assert_eq!(iterations, 1);
+        assert_eq!(values, vec![]);
+        assert!(cleared);
 
         // Change vec type to non-collection before recursion means recursion
         // doesn't happen.
@@ -413,13 +422,12 @@ mod tests {
 
             match item {
                 IterItem::Value(value) => values.push(value.clone()),
-                IterItem::KeyValue(key, value) => match value {
-                    value @ Value::Array(..) => {
+                IterItem::KeyValue(key, value) => {
+                    if let value @ Value::Array(..) = value {
                         *value = Value::Null;
                         changed = true;
                     }
-                    _ => {}
-                },
+                }
                 IterItem::IndexValue(index, value) => values.push(value.clone()),
             }
         }
@@ -430,7 +438,7 @@ mod tests {
 
         // Change vec type to a different collection type before recursion means
         // recursion keeps working as expected
-        iter = data.clone().into_iter(true);
+        iter = data.into_iter(true);
         changed = false;
         iterations = 0;
         values = vec![];
