@@ -89,6 +89,7 @@ message Metric {
     Sketch sketch = 15;
   }
   string namespace = 11;
+  uint32 interval_ms = 18;
 }
 
 message Counter {
