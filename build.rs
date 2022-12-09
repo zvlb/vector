@@ -103,11 +103,13 @@ fn main() {
         println!("cargo:rerun-if-changed=proto/dnstap.proto");
         println!("cargo:rerun-if-changed=proto/ddsketch_full.proto");
         println!("cargo:rerun-if-changed=proto/dd_metric.proto");
+        println!("cargo:rerun-if-changed=proto/google/cloud/bigquery/storage/v1/storage.proto");
         println!("cargo:rerun-if-changed=proto/google/pubsub/v1/pubsub.proto");
         println!("cargo:rerun-if-changed=proto/google/rpc/status.proto");
         println!("cargo:rerun-if-changed=proto/vector.proto");
 
         let mut prost_build = prost_build::Config::new();
+        prost_build.include_file("includes.rs");
         prost_build.btree_map(&["."]);
 
         tonic_build::configure()
@@ -120,11 +122,12 @@ fn main() {
                     "proto/ddsketch_full.proto",
                     "proto/dd_metric.proto",
                     "proto/dd_trace.proto",
+                    "proto/google/cloud/bigquery/storage/v1/storage.proto",
                     "proto/google/pubsub/v1/pubsub.proto",
                     "proto/google/rpc/status.proto",
                     "proto/vector.proto",
                 ],
-                &["proto/", "lib/vector-core/proto/"],
+                &["proto/", "proto/google", "lib/vector-core/proto/"],
             )
             .unwrap();
     }

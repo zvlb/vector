@@ -226,9 +226,26 @@ async fn healthcheck(client: HttpClient, uri: Uri, auth: GcpAuthenticator) -> cr
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
+    use futures_util::stream;
     use indoc::indoc;
+    use prost_types::DescriptorProto;
 
     use super::*;
+
+    // prost emits some generated code that includes clones on `Arc`
+    // objects, which causes a clippy ding on this block. We don't
+    // directly control the generated code, so allow this lint here.
+    #[allow(clippy::clone_on_ref_ptr)]
+    #[allow(warnings)]
+    mod bq_proto {
+        include!(concat!(env!("OUT_DIR"), "/includes.rs"));
+        //include!(concat!(
+        //    env!("OUT_DIR"),
+        //    "/google.cloud.bigquery.storage.v1.rs"
+        //));
+    }
 
     #[test]
     fn generate_config() {
@@ -246,6 +263,192 @@ mod tests {
         if config.build(SinkContext::new_test()).await.is_ok() {
             panic!("config.build failed to error");
         }
+    }
+
+    #[tokio::test]
+    async fn big_query() {
+        use append_rows_request::*;
+        use big_query_read_client::BigQueryReadClient;
+        use big_query_write_client::BigQueryWriteClient;
+        use bq_proto::google::cloud::bigquery::storage::v1::*;
+
+        let auth = GcpAuthConfig {
+            credentials_path: Some("/tmp/gcp_auth.json".to_owned()),
+            ..Default::default()
+        }
+        .build(Scope::BigQuery)
+        .await
+        .unwrap();
+
+        let project = std::env::var("BQ_PROJECT").unwrap();
+        let dataset = std::env::var("BQ_DATASET").unwrap();
+        let table = std::env::var("BQ_TABLE").unwrap();
+
+        let table_path =
+            format!("projects/{}/datasets/{}/tables/{}", project, dataset, table).to_owned();
+
+        // TODO should use the Storage Read API to obtain the schema??
+
+        // read to get schema
+        {
+            // create_client {
+            let channel =
+                tonic::transport::Endpoint::from_static("https://bigquerystorage.googleapis.com")
+                    .connect()
+                    .await
+                    .unwrap();
+
+            let mut client =
+                BigQueryReadClient::with_interceptor(channel, |mut req: tonic::Request<()>| {
+                    if let Some(token) = auth.make_token() {
+                        let authorization = tonic::metadata::MetadataValue::try_from(&token)
+                            .map_err(|_| {
+                                tonic::Status::new(
+                                    tonic::Code::FailedPrecondition,
+                                    "Invalid token text returned by GCP",
+                                )
+                            })
+                            .unwrap();
+                        req.metadata_mut().insert("authorization", authorization);
+                    }
+                    Ok(req)
+                });
+            // } create_client
+
+            let read_request = CreateReadSessionRequest {
+                parent: format!("projects/{}", project).to_owned(),
+                read_session: Some(ReadSession {
+                    name: "".to_owned(),
+                    expire_time: None,
+                    data_format: DataFormat::Avro as i32,
+                    table: table_path.clone(),
+                    table_modifiers: None,
+                    read_options: None,
+                    streams: vec![],
+                    estimated_total_bytes_scanned: 0,
+                    trace_id: "".to_owned(),
+                    schema: None,
+                }),
+                max_stream_count: 1,
+                preferred_min_stream_count: 1,
+            };
+
+            match client.create_read_session(read_request).await {
+                Ok(mut tonic_response) => {
+                    let read_session = tonic_response.get_mut();
+                    println!("read_session: {:?}", read_session);
+
+                    println!("schema: {:?}", read_session.schema);
+
+                    // TODO this gets us the Avro schema ... but how to convert that to
+                    // DescriptorProto ??
+
+                    // looks like that is just a String of a JSON serialized schema.
+                    // So will probably have to deserialize that with avro-rs .. and manually
+                    // create the DescriptorProto from that.
+                }
+                Err(e) => {
+                    println!("error creating read session: {}", e);
+                }
+            }
+        } // read to get schema
+
+        // AppendRows RPC (loop)
+        {
+            // create_client {
+            let channel =
+                tonic::transport::Endpoint::from_static("https://bigquerystorage.googleapis.com")
+                    .connect()
+                    .await
+                    .unwrap();
+
+            let mut client =
+                BigQueryWriteClient::with_interceptor(channel, |mut req: tonic::Request<()>| {
+                    if let Some(token) = auth.make_token() {
+                        let authorization = tonic::metadata::MetadataValue::try_from(&token)
+                            .map_err(|_| {
+                                tonic::Status::new(
+                                    tonic::Code::FailedPrecondition,
+                                    "Invalid token text returned by GCP",
+                                )
+                            })
+                            .unwrap();
+                        req.metadata_mut().insert("authorization", authorization);
+                    }
+                    Ok(req)
+                });
+            // } create_client
+
+            // CreateWriteStream doesn't need to be called for the _default stream
+
+            let write_path = format!(
+                "projects/{}/datasets/{}/tables/{}/streams/_default",
+                project, dataset, table
+            )
+            .to_owned();
+
+            let request = stream::iter(vec![AppendRowsRequest {
+                write_stream: write_path,
+                offset: None,
+                trace_id: "".to_owned(),
+                missing_value_interpretations: BTreeMap::new(),
+                rows: Some(Rows::ProtoRows(ProtoData {
+                    writer_schema: Some(ProtoSchema {
+                        // TODO, the below needs to be filled out (only on the first request) for writes to succeed.
+                        // wondering if can get from Read request.
+                        proto_descriptor: Some(DescriptorProto {
+                            name: Some("a_name".to_string()),
+                            field: vec![],           // Vec<FieldDescriptorProto>
+                            extension: vec![],       // Vec<FieldDescriptorProto>
+                            nested_type: vec![],     // Vec<DescriptorProto>
+                            enum_type: vec![],       // Vec<EnumDescriptorProto>
+                            extension_range: vec![], // Vec<ExtensionRange>
+                            oneof_decl: vec![],      // Vec<OneOfDescriptorProto>
+                            options: None,
+                            //options: Some(MessageOptions {
+                            //    message_set_wire_format: Some(true),
+                            //    deprecated: Some(false),
+                            //    map_entry: Some(true),
+                            //    uninterpreted_option: vec![], // Vec<UninterpretedOption>
+                            //    no_standard_descriptor_accessor: Some(true),
+                            //}), // MessageOptions
+                            reserved_range: vec![], // Vec<ReservedRange>
+                            reserved_name: vec![],  // Vec<String>
+                        }),
+                    }),
+                    rows: Some(ProtoRows {
+                        serialized_rows: vec![vec![]],
+                    }),
+                })),
+            }]);
+
+            // below will fail until schema is correct
+
+            match client.append_rows(request).await {
+                Ok(mut tonic_response) => {
+                    let streaming = tonic_response.get_mut();
+                    loop {
+                        match streaming.message().await {
+                            Ok(Some(append_rows_response)) => {
+                                println!("append_rows_response: {:?}", append_rows_response);
+                            }
+                            Ok(None) => {
+                                println!("stream closed naturally");
+                            }
+                            Err(status) => {
+                                println!("gRPC error: {:?}", status);
+                                break;
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("error appending rows: {}", e);
+                }
+            };
+        } // AppendRows
+
+        // FinalizeWriteStream is not supported on the _default stream
     }
 }
 
