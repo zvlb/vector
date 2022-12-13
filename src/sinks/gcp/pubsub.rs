@@ -265,6 +265,63 @@ mod tests {
         }
     }
 
+    fn descriptor_proto_type_from_avro_type(avro_schema: &avro_rs::Schema) -> i32 {
+        use prost_types::field_descriptor_proto::Type;
+
+        let descriptor_proto_type = match avro_schema {
+            avro_rs::Schema::Null => panic!("unexpected type"),
+            avro_rs::Schema::Boolean => Type::Bool,
+            avro_rs::Schema::Int => Type::Int32,
+            avro_rs::Schema::Long => Type::Int64,
+            avro_rs::Schema::Float => Type::Float,
+            avro_rs::Schema::Double => Type::Double,
+            avro_rs::Schema::Bytes => Type::Bytes,
+            avro_rs::Schema::String => Type::String,
+            _ => panic!("unexpected type"),
+            // TODO  should we try parsing some of these ?
+            // avro_rs::Schema::Enum { name, doc, symbols } => todo!(),
+            // avro_rs::Schema::Fixed { name, size } => todo!(),
+            // avro_rs::Schema::Decimal { precision, scale, inner } => todo!(),
+            // avro_rs::Schema::Uuid => todo!(),
+            // avro_rs::Schema::Date => todo!(),
+            // avro_rs::Schema::TimeMillis => todo!(),
+            // avro_rs::Schema::TimeMicros => todo!(),
+            // avro_rs::Schema::TimestampMillis => todo!(),
+            // avro_rs::Schema::TimestampMicros => todo!(),
+            // avro_rs::Schema::Duration => todo!(),
+        };
+
+        descriptor_proto_type as i32
+    }
+
+    #[test]
+    fn big_query_foo() {
+        use avro_rs::*;
+
+        let raw_schema = r#"
+        {
+            "type": "record",
+            "name": "test",
+            "fields": [
+                {"name": "a", "type": "long", "default": 42},
+                {"name": "b", "type": ["null", "string"]}
+            ]
+        }
+    "#;
+
+        let schema = Schema::parse_str(raw_schema).unwrap();
+
+        println!("{:?}", schema);
+
+        let mut writer = Writer::with_codec(&schema, Vec::new(), Codec::Deflate);
+
+        let mut record = types::Record::new(writer.schema()).unwrap();
+        record.put("a", 27i64);
+        record.put("b", Some("foo"));
+
+        writer.append(record).unwrap();
+    }
+
     #[tokio::test]
     async fn big_query() {
         use append_rows_request::*;
@@ -287,7 +344,11 @@ mod tests {
         let table_path =
             format!("projects/{}/datasets/{}/tables/{}", project, dataset, table).to_owned();
 
-        // TODO should use the Storage Read API to obtain the schema??
+        // use the Storage Read API to obtain the schema
+
+        let mut field_descriptors = vec![];
+
+        let mut schema = None;
 
         // read to get schema
         {
@@ -335,23 +396,116 @@ mod tests {
 
             match client.create_read_session(read_request).await {
                 Ok(mut tonic_response) => {
+                    // get the schema from the response
                     let read_session = tonic_response.get_mut();
-                    println!("read_session: {:?}", read_session);
+                    let schema_ = read_session.schema.as_ref().unwrap();
 
-                    println!("schema: {:?}", read_session.schema);
+                    // should be avro format since we specified that
+                    let schema_ = match schema_ {
+                        read_session::Schema::AvroSchema(s) => &s.schema,
+                        read_session::Schema::ArrowSchema(_) => panic!("asked for avro schema"),
+                    };
 
-                    // TODO this gets us the Avro schema ... but how to convert that to
-                    // DescriptorProto ??
+                    schema = Some(avro_rs::Schema::parse_str(schema_.as_str()).unwrap());
 
-                    // looks like that is just a String of a JSON serialized schema.
-                    // So will probably have to deserialize that with avro-rs .. and manually
-                    // create the DescriptorProto from that.
+                    // create the FieldDescriptorProto from the Avro schema fields.
+                    //
+                    let (_name, _doc, fields, _lookup) = match schema.as_ref().unwrap() {
+                        avro_rs::Schema::Record {
+                            name,
+                            doc,
+                            fields,
+                            lookup,
+                        } => (name, doc, fields, lookup),
+                        _ => panic!("unexpected Avro schema format"),
+                    };
+
+                    for field in fields {
+                        println!("");
+                        println!("field: {:?}", field);
+                        println!("");
+                        let union_schema = match &field.schema {
+                            avro_rs::Schema::Union(union_schema) => union_schema,
+                            _ => panic!("unexpected Avro schema format"),
+                        };
+
+                        let t = if union_schema.is_nullable() {
+                            &union_schema.variants()[1]
+                        } else {
+                            &union_schema.variants()[0]
+                        };
+
+                        let type_ = descriptor_proto_type_from_avro_type(t);
+
+                        let descriptor = prost_types::FieldDescriptorProto {
+                            name: Some(field.name.to_owned()),
+                            number: Some(field.position as i32 + 1),
+                            label: None,
+                            r#type: Some(type_),
+                            type_name: None,
+                            extendee: None,
+
+                            // TODO parse the JSON value type to the string version of that type as
+                            // defined in https://docs.rs/prost-types/latest/prost_types/struct.FieldDescriptorProto.html#structfield.default_value
+                            //default_value: field.default,
+                            default_value: None,
+                            oneof_index: None,
+                            json_name: None,
+                            options: None,
+                            proto3_optional: None,
+                        };
+
+                        field_descriptors.push(descriptor);
+                    }
                 }
                 Err(e) => {
                     println!("error creating read session: {}", e);
                 }
             }
         } // read to get schema
+
+        let encoded_row = if let Some(schema) = schema {
+            println!("schema_is: {:?}", schema);
+
+            let mut writer = avro_rs::Writer::new(&schema, Vec::new());
+            let mut record = avro_rs::types::Record::new(writer.schema()).unwrap();
+
+            // BIG NOTE !!
+            //
+            // The avro_rs crate does not document this AT ALL but, if the mode is nullable , aka
+            // the type is a list and the first entry in the list is Null , then you have to make
+            // the values in the put call as Option types.
+
+            record.put("weight_kg", Some(avro_rs::types::Value::Long(0)));
+            record.put(
+                "driver",
+                Some(avro_rs::types::Value::String("lando".to_owned())),
+            );
+            record.put("points", Some(avro_rs::types::Value::Long(1)));
+            record.put("year", Some(avro_rs::types::Value::Long(2022)));
+            record.put(
+                "team",
+                Some(avro_rs::types::Value::String("haas".to_owned())),
+            );
+            record.put("height_meters", Some(avro_rs::types::Value::Double(3.2)));
+            record.put("rank", Some(avro_rs::types::Value::Long(2)));
+
+            for f in &record.fields {
+                println!("field k: {:?}, v: {:?}", f.0, f.1);
+            }
+
+            // validation against schema occurs here
+            match writer.append(record) {
+                Ok(_) => {}
+                Err(e) => panic!("error writing record: {}", e),
+            }
+
+            let encoded = writer.into_inner().unwrap();
+
+            encoded
+        } else {
+            vec![]
+        };
 
         // AppendRows RPC (loop)
         {
@@ -397,13 +551,13 @@ mod tests {
                         // TODO, the below needs to be filled out (only on the first request) for writes to succeed.
                         // wondering if can get from Read request.
                         proto_descriptor: Some(DescriptorProto {
-                            name: Some("a_name".to_string()),
-                            field: vec![],           // Vec<FieldDescriptorProto>
-                            extension: vec![],       // Vec<FieldDescriptorProto>
-                            nested_type: vec![],     // Vec<DescriptorProto>
-                            enum_type: vec![],       // Vec<EnumDescriptorProto>
-                            extension_range: vec![], // Vec<ExtensionRange>
-                            oneof_decl: vec![],      // Vec<OneOfDescriptorProto>
+                            name: Some("ProtoData".to_owned()),
+                            field: field_descriptors, // Vec<FieldDescriptorProto>
+                            extension: vec![],        // Vec<FieldDescriptorProto>
+                            nested_type: vec![],      // Vec<DescriptorProto>
+                            enum_type: vec![],        // Vec<EnumDescriptorProto>
+                            extension_range: vec![],  // Vec<ExtensionRange>
+                            oneof_decl: vec![],       // Vec<OneOfDescriptorProto>
                             options: None,
                             //options: Some(MessageOptions {
                             //    message_set_wire_format: Some(true),
@@ -417,7 +571,7 @@ mod tests {
                         }),
                     }),
                     rows: Some(ProtoRows {
-                        serialized_rows: vec![vec![]],
+                        serialized_rows: vec![encoded_row],
                     }),
                 })),
             }]);
@@ -434,6 +588,7 @@ mod tests {
                             }
                             Ok(None) => {
                                 println!("stream closed naturally");
+                                break;
                             }
                             Err(status) => {
                                 println!("gRPC error: {:?}", status);
