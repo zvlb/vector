@@ -4,6 +4,7 @@ use std::{
     io::{self, Write},
     mem,
     sync::Arc,
+    time::Instant,
 };
 
 use bytes::{BufMut, Bytes};
@@ -117,9 +118,9 @@ pub struct DatadogMetricsEncoder {
     default_namespace: Option<Arc<str>>,
     uncompressed_limit: usize,
     compressed_limit: usize,
-
     state: EncoderState,
     log_schema: &'static LogSchema,
+    last_sent: Option<Instant>,
 }
 
 impl DatadogMetricsEncoder {
@@ -156,12 +157,14 @@ impl DatadogMetricsEncoder {
             compressed_limit,
             state: EncoderState::default(),
             log_schema: log_schema(),
+            last_sent: None,
         })
     }
 }
 
 impl DatadogMetricsEncoder {
     fn reset_state(&mut self) -> EncoderState {
+        self.last_sent = Some(Instant::now());
         mem::take(&mut self.state)
     }
 
@@ -183,8 +186,12 @@ impl DatadogMetricsEncoder {
             // Series metrics are encoded via JSON, in an incremental fashion.
             DatadogMetricsEndpoint::Series => {
                 // A single `Metric` might generate multiple Datadog series metrics.
-                let all_series =
-                    generate_series_metrics(&metric, &self.default_namespace, self.log_schema)?;
+                let all_series = generate_series_metrics(
+                    &metric,
+                    &self.default_namespace,
+                    self.log_schema,
+                    self.last_sent,
+                )?;
 
                 // We handle adding the JSON array separator (comma) manually since the encoding is
                 // happening incrementally.
@@ -413,6 +420,7 @@ fn generate_series_metrics(
     metric: &Metric,
     default_namespace: &Option<Arc<str>>,
     log_schema: &'static LogSchema,
+    last_sent: Option<Instant>,
 ) -> Result<Vec<DatadogSeriesMetric>, EncoderError> {
     let name = get_namespaced_name(metric, default_namespace);
 
@@ -426,7 +434,13 @@ fn generate_series_metrics(
     let results = match (metric.value(), metric.interval_ms()) {
         (MetricValue::Counter { value }, maybe_interval_ms) => {
             let (value, interval, metric_type) = match maybe_interval_ms {
-                None => (*value, None, DatadogMetricType::Count),
+                None => (
+                    *value,
+                    last_sent
+                        .map(|then| then.elapsed())
+                        .map(|d| d.as_secs() as u32),
+                    DatadogMetricType::Count,
+                ),
                 // When an interval is defined, it implies the value should be in a per-second form,
                 // so we need to get back to seconds from our milliseconds-based interval, and then
                 // divide our value by that amount as well.
@@ -658,6 +672,7 @@ mod tests {
         collections::BTreeMap,
         io::{self, copy},
         num::NonZeroU32,
+        time::{Duration, Instant},
     };
 
     use bytes::{BufMut, Bytes, BytesMut};
@@ -782,8 +797,12 @@ mod tests {
         let expected_value = value / (interval_ms / 1000) as f64;
         let expected_interval = interval_ms / 1000;
 
+        let interval_instant = Instant::now();
+        interval_instant.checked_add(Duration::from_millis(interval_ms as u64));
+
         // Encode the metric and make sure we did the rate conversion correctly.
-        let result = generate_series_metrics(&rate_counter, &None, log_schema());
+        let result =
+            generate_series_metrics(&rate_counter, &None, log_schema(), Some(interval_instant));
         assert!(result.is_ok());
 
         let metrics = result.unwrap();
