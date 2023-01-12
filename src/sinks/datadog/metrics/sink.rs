@@ -184,13 +184,15 @@ fn collapse_counters_by_series_and_timestamp(mut metrics: Vec<Metric>) -> Vec<Me
     // For any non-counter, we simply ignore it and leave it as-is.
     while idx < metrics.len() {
         let curr_idx = idx;
-        let counter_ts = match metrics[curr_idx].value() {
-            MetricValue::Counter { .. } => metrics[curr_idx]
+        let counter_ts = match (metrics[curr_idx].value(), metrics[curr_idx].interval_ms()) {
+            (MetricValue::Counter { .. }, None) => metrics[curr_idx]
                 .data()
                 .timestamp()
                 .map(|dt| dt.timestamp())
                 .unwrap_or(now_ts),
-            // If it's not a counter, we can skip it.
+            // If it's not a pure Counter, we can skip it.
+            // Until we encode (after this function), Rate metrics are represented as Counter and
+            // are thus filtered out by the check for no interval_ms.
             _ => {
                 idx += 1;
                 continue;
@@ -275,7 +277,9 @@ fn collapse_counters_by_series_and_timestamp(mut metrics: Vec<Metric>) -> Vec<Me
 
 #[cfg(test)]
 mod tests {
-    use chrono::{DateTime, Utc};
+    use std::num::NonZeroU32;
+
+    use chrono::{DateTime, TimeZone, Utc};
     use proptest::prelude::*;
     use vector_core::event::{Metric, MetricKind, MetricValue};
 
@@ -307,6 +311,17 @@ mod tests {
         Metric::new(name, MetricKind::Incremental, MetricValue::Gauge { value })
     }
 
+    fn create_rate(name: &str, value: f64, interval_ms: u32) -> Metric {
+        let value = MetricValue::Counter { value };
+        Metric::new(name, MetricKind::Incremental, value)
+            .with_timestamp(Some(ts()))
+            .with_interval_ms(NonZeroU32::new(interval_ms))
+    }
+
+    fn ts() -> DateTime<Utc> {
+        Utc.ymd(2023, 1, 12).and_hms_nano(8, 9, 10, 11)
+    }
+
     #[test]
     fn collapse_no_metrics() {
         let input = Vec::new();
@@ -326,7 +341,26 @@ mod tests {
     }
 
     #[test]
-    fn collapse_identical_metrics_gauge() {
+    fn does_not_collapse_identical_metrics_rate() {
+        let val = 43.0;
+        let interval_ms = 1000;
+        let input = vec![
+            create_rate("rate", val, interval_ms),
+            create_rate("rate", val, interval_ms),
+            create_rate("rate", val, interval_ms),
+            create_rate("rate", val, interval_ms),
+            create_rate("rate", val, interval_ms),
+            create_rate("rate", val, interval_ms),
+            create_rate("rate", val, interval_ms),
+        ];
+        let expected = input.clone();
+        let actual = collapse_counters_by_series_and_timestamp(input);
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn does_not_collapse_identical_metrics_gauge() {
         let input = vec![create_gauge("basic", 42.0), create_gauge("basic", 42.0)];
         let expected = input.clone();
         let actual = collapse_counters_by_series_and_timestamp(input);
