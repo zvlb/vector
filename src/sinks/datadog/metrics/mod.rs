@@ -9,3 +9,4 @@ mod sink;
 mod integration_tests;
 
 pub use self::config::DatadogMetricsConfig;
+pub use self::sink::collapse_counters_by_series_and_timestamp;

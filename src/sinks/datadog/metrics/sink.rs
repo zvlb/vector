@@ -159,7 +159,7 @@ where
     }
 }
 
-fn collapse_counters_by_series_and_timestamp(mut metrics: Vec<Metric>) -> Vec<Metric> {
+pub fn collapse_counters_by_series_and_timestamp(mut metrics: Vec<Metric>) -> Vec<Metric> {
     // NOTE: Astute observers may recognize that this behavior could also be acheived by using
     // `Vec::dedup_by`, but the clincher is that `dedup_by` requires a sorted vector to begin with.
     //

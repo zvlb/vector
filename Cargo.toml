@@ -912,4 +912,5 @@ required-features = ["codecs-benches"]
 [[bench]]
 name = "ddmetrics"
 harness = false
+path = "benches/ddmetrics/mod.rs"
 required-features = ["ddmetrics-benches"]

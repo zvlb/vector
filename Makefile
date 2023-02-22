@@ -401,6 +401,11 @@ bench-dnstap: ## Run dnstap benches
 	${MAYBE_ENVIRONMENT_EXEC} cargo bench --no-default-features --features "dnstap-benches" --bench dnstap ${CARGO_BENCH_FLAGS}
 	${MAYBE_ENVIRONMENT_COPY_ARTIFACTS}
 
+.PHONY: bench-ddmetrics
+bench-ddmetrics: ## Run ddmetrics benches
+	${MAYBE_ENVIRONMENT_EXEC} cargo bench --no-default-features --features "ddmetrics-benches" --bench ddmetrics ${CARGO_BENCH_FLAGS}
+	${MAYBE_ENVIRONMENT_COPY_ARTIFACTS}
+
 .PHONY: bench-dnsmsg-parser
 bench-dnsmsg-parser: ## Run dnsmsg-parser benches
 	${MAYBE_ENVIRONMENT_EXEC} CRITERION_HOME="$(CRITERION_HOME)" cargo bench --manifest-path lib/dnsmsg-parser/Cargo.toml ${CARGO_BENCH_FLAGS}

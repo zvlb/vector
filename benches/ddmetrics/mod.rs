@@ -1,60 +1,60 @@
-use bytes::Bytes;
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use vector::{
-    event::LogEvent,
-    sources::dnstap::{schema::DnstapEventSchema, DnstapParser},
+    event::{Metric, MetricKind, MetricValue},
+    sinks::datadog::metrics::collapse_counters_by_series_and_timestamp,
 };
 
-fn benchmark_query_parsing(c: &mut Criterion) {
-    let mut event = LogEvent::default();
-    let schema = DnstapEventSchema::new();
-    let mut parser = DnstapParser::new(&schema, &mut event);
-    let raw_dnstap_data = "ChVqYW1lcy1WaXJ0dWFsLU1hY2hpbmUSC0JJTkQgOS4xNi4zcnoIAxACGAEiEAAAAAAAAA\
-    AAAAAAAAAAAAAqECABBQJwlAAAAAAAAAAAADAw8+0CODVA7+zq9wVNMU3WNlI2kwIAAAABAAAAAAABCWZhY2Vib29rMQNjb\
-    20AAAEAAQAAKQIAAACAAAAMAAoACOxjCAG9zVgzWgUDY29tAHgB";
-    let dnstap_data = base64::decode(raw_dnstap_data).unwrap();
-
-    let mut group = c.benchmark_group("dnstap");
-    group.throughput(Throughput::Bytes(dnstap_data.len() as u64));
-    group.bench_function("dns_query_parsing", |b| {
-        b.iter_batched(
-            || dnstap_data.clone(),
-            |dnstap_data| parser.parse_dnstap_data(Bytes::from(dnstap_data)).unwrap(),
-            BatchSize::SmallInput,
-        )
-    });
-
-    group.finish();
+fn create_counter(name: &str, value: f64) -> Metric {
+    Metric::new(
+        name,
+        MetricKind::Incremental,
+        MetricValue::Counter { value },
+    )
 }
 
-fn benchmark_update_parsing(c: &mut Criterion) {
-    let mut event = LogEvent::default();
-    let schema = DnstapEventSchema::new();
-    let mut parser = DnstapParser::new(&schema, &mut event);
-    let raw_dnstap_data = "ChVqYW1lcy1WaXJ0dWFsLU1hY2hpbmUSC0JJTkQgOS4xNi4zcmsIDhABGAEiBH8AAA\
-    EqBH8AAAEwrG44AEC+iu73BU14gfofUh1wi6gAAAEAAAAAAAAHZXhhbXBsZQNjb20AAAYAAWC+iu73BW0agDwvch1wi6gAA\
-    AEAAAAAAAAHZXhhbXBsZQNjb20AAAYAAXgB";
-    let dnstap_data = base64::decode(raw_dnstap_data).unwrap();
-
-    let mut group = c.benchmark_group("dnstap");
-    group.throughput(Throughput::Bytes(dnstap_data.len() as u64));
-    group.bench_function("dns_update_parsing", |b| {
-        b.iter_batched(
-            || dnstap_data.clone(),
-            |dnstap_data| parser.parse_dnstap_data(Bytes::from(dnstap_data)).unwrap(),
-            BatchSize::SmallInput,
-        )
+fn benchmark_empty(c: &mut Criterion) {
+    c.bench_function("empty", |b| {
+        b.iter(|| {
+            let input = Vec::new();
+            collapse_counters_by_series_and_timestamp(black_box(input))
+        })
     });
+}
 
-    group.finish();
+fn benchmark_single_counter(c: &mut Criterion) {
+    c.bench_function("single_counter", |b| {
+        b.iter(|| {
+            let input = vec![create_counter("basic", 42.0)];
+            collapse_counters_by_series_and_timestamp(black_box(input))
+        })
+    });
+}
+
+fn benchmark_collapse_counter(c: &mut Criterion) {
+    c.bench_function("collapse_counter", |b| {
+        b.iter(|| {
+            let counter_value = 42.0;
+            let input = vec![
+                create_counter("basic", counter_value),
+                create_counter("basic", counter_value),
+                create_counter("basic", counter_value),
+                create_counter("basic", counter_value),
+                create_counter("basic", counter_value),
+                create_counter("basic", counter_value),
+                create_counter("basic", counter_value),
+            ];
+            collapse_counters_by_series_and_timestamp(black_box(input))
+        })
+    });
 }
 
 criterion_group!(
     name = benches;
     // encapsulates inherent CI noise we saw in
     // https://github.com/vectordotdev/vector/issues/5394
-    config = Criterion::default().noise_threshold(0.05);
-    targets = benchmark_query_parsing,benchmark_update_parsing
+    //config = Criterion::default().noise_threshold(0.05);
+    config = Criterion::default();
+    targets = benchmark_empty, benchmark_single_counter, benchmark_collapse_counter
 );
 
 criterion_main! {
