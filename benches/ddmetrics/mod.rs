@@ -1,8 +1,11 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+//use pprof::criterion::{Output, PProfProfiler};
 use vector::{
     event::{Metric, MetricKind, MetricValue},
     sinks::datadog::metrics::collapse_counters_by_series_and_timestamp,
 };
+
+mod perf;
 
 fn create_counter(name: &str, value: f64) -> Metric {
     Metric::new(
@@ -53,7 +56,9 @@ criterion_group!(
     // encapsulates inherent CI noise we saw in
     // https://github.com/vectordotdev/vector/issues/5394
     //config = Criterion::default().noise_threshold(0.05);
-    config = Criterion::default();
+    //config = Criterion::default();
+    //config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
+    config = Criterion::default().with_profiler(perf::FlamegraphProfiler::new(100));
     targets = benchmark_empty, benchmark_single_counter, benchmark_collapse_counter
 );
 
