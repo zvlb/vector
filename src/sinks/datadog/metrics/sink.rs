@@ -1,4 +1,4 @@
-use std::{fmt, sync::Arc};
+use std::{fmt, fs::File, sync::Arc};
 
 use async_trait::async_trait;
 use chrono::Utc;
@@ -160,6 +160,12 @@ where
 }
 
 pub fn collapse_counters_by_series_and_timestamp(mut metrics: Vec<Metric>) -> Vec<Metric> {
+    let guard = pprof::ProfilerGuardBuilder::default()
+        .frequency(10)
+        //.blocklist(&["libc", "libgcc", "pthread", "vdso"])
+        .build()
+        .unwrap();
+
     // NOTE: Astute observers may recognize that this behavior could also be acheived by using
     // `Vec::dedup_by`, but the clincher is that `dedup_by` requires a sorted vector to begin with.
     //
@@ -187,9 +193,14 @@ pub fn collapse_counters_by_series_and_timestamp(mut metrics: Vec<Metric>) -> Ve
     //
     // For any non-counter, we simply ignore it and leave it as-is.
     while idx < metrics.len() {
+        let curr_metric = &metrics[curr_idx];
+        let len = metrics.len();
         let curr_idx = idx;
-        let counter_ts = match metrics[curr_idx].value() {
-            MetricValue::Counter { .. } => metrics[curr_idx]
+        let curr_metric = &metrics[curr_idx];
+        let curr_metric_series = curr_metric.series();
+
+        let counter_ts = match curr_metric.value() {
+            MetricValue::Counter { .. } => curr_metric
                 .data()
                 .timestamp()
                 .map(|dt| dt.timestamp())
@@ -200,6 +211,8 @@ pub fn collapse_counters_by_series_and_timestamp(mut metrics: Vec<Metric>) -> Ve
                 continue;
             }
         };
+
+        // TODO: seems like we can optimize this by doing fewer lookups, at least.
 
         let mut accumulated_value = 0.0;
         let mut accumulated_finalizers = EventFinalizers::default();
@@ -212,17 +225,16 @@ pub fn collapse_counters_by_series_and_timestamp(mut metrics: Vec<Metric>) -> Ve
         let mut is_disjoint = false;
         let mut had_match = false;
         let mut inner_idx = curr_idx + 1;
-        while inner_idx < metrics.len() {
+        while inner_idx < len {
+            let inner_metric = &metrics[inner_idx];
             let mut should_advance = true;
-            if let MetricValue::Counter { value } = metrics[inner_idx].value() {
-                let other_counter_ts = metrics[inner_idx]
+            if let MetricValue::Counter { value } = inner_metric.value() {
+                let other_counter_ts = inner_metric
                     .data()
                     .timestamp()
                     .map(|dt| dt.timestamp())
                     .unwrap_or(now_ts);
-                if metrics[curr_idx].series() == metrics[inner_idx].series()
-                    && counter_ts == other_counter_ts
-                {
+                if curr_metric_series == inner_metric.series() && counter_ts == other_counter_ts {
                     had_match = true;
 
                     // Collapse this counter by accumulating its value, and its
@@ -274,12 +286,21 @@ pub fn collapse_counters_by_series_and_timestamp(mut metrics: Vec<Metric>) -> Ve
         idx += 1;
     }
 
+    if let Ok(report) = guard.report().build() {
+        println!("report: {:?}", &report);
+
+        let file = File::create("flamegraph.svg").unwrap();
+        let mut options = pprof::flamegraph::Options::default();
+        //options.image_width = Some(2500);
+        report.flamegraph_with_options(file, &mut options).unwrap();
+    };
+
     metrics
 }
 
 #[cfg(test)]
 mod tests {
-    use chrono::{DateTime, Utc};
+    use chrono::{DateTime, Duration, Utc};
     use proptest::prelude::*;
     use vector_core::event::{Metric, MetricKind, MetricValue};
 
@@ -354,8 +375,9 @@ mod tests {
     }
 
     #[test]
-    fn collapse_identical_metrics_counter() {
+    fn collapse_identical_metrics_counter_og() {
         let counter_value = 42.0;
+
         let input = vec![
             create_counter("basic", counter_value),
             create_counter("basic", counter_value),
@@ -371,6 +393,57 @@ mod tests {
         let actual = collapse_counters_by_series_and_timestamp(input);
 
         assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn collapse_identical_metrics_counter_large() {
+        let counter_value = 42.0;
+
+        let mut input = vec![];
+
+        // need to have enough runtime to trigger the sampling
+        for _ in 0..1_000_000 {
+            input.push(create_counter("basic", counter_value));
+        }
+
+        let expected_counter_value = input.len() as f64 * counter_value;
+        let expected = vec![create_counter("basic", expected_counter_value)];
+        let actual = collapse_counters_by_series_and_timestamp(input);
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn collapse_identical_metrics_counter_mix() {
+        let counter_value = 42.0;
+
+        let mut input = vec![];
+
+        let mut j = 0;
+        let mut f = 0;
+
+        let now = Utc::now();
+
+        for _ in 0..10_000 {
+            if j == 10 {
+                input.push(create_counter("basic", counter_value));
+                j = 0;
+            } else {
+                input.push(
+                    create_counter("basic", counter_value)
+                        .with_timestamp(Some(now + Duration::seconds(f))),
+                );
+            }
+
+            j = j + 1;
+            f = f + 1;
+        }
+
+        let expected_counter_value = input.len() as f64 * counter_value;
+        let _expected = vec![create_counter("basic", expected_counter_value)];
+        let _actual = collapse_counters_by_series_and_timestamp(input);
+
+        assert_eq!(9, 9);
     }
 
     #[derive(Eq, Ord, PartialEq, PartialOrd)]

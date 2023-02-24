@@ -56,10 +56,11 @@ criterion_group!(
     // encapsulates inherent CI noise we saw in
     // https://github.com/vectordotdev/vector/issues/5394
     //config = Criterion::default().noise_threshold(0.05);
-    //config = Criterion::default();
+    config = Criterion::default();
     //config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
-    config = Criterion::default().with_profiler(perf::FlamegraphProfiler::new(100));
-    targets = benchmark_empty, benchmark_single_counter, benchmark_collapse_counter
+    //config = Criterion::default().with_profiler(perf::FlamegraphProfiler::new(100));
+    //targets = benchmark_empty, benchmark_single_counter, benchmark_collapse_counter
+    targets = benchmark_collapse_counter
 );
 
 criterion_main! {
