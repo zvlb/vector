@@ -193,14 +193,10 @@ pub fn collapse_counters_by_series_and_timestamp(mut metrics: Vec<Metric>) -> Ve
     //
     // For any non-counter, we simply ignore it and leave it as-is.
     while idx < metrics.len() {
-        let curr_metric = &metrics[curr_idx];
-        let len = metrics.len();
         let curr_idx = idx;
-        let curr_metric = &metrics[curr_idx];
-        let curr_metric_series = curr_metric.series();
 
-        let counter_ts = match curr_metric.value() {
-            MetricValue::Counter { .. } => curr_metric
+        let counter_ts = match metrics[curr_idx].value() {
+            MetricValue::Counter { .. } => metrics[curr_idx]
                 .data()
                 .timestamp()
                 .map(|dt| dt.timestamp())
@@ -225,16 +221,17 @@ pub fn collapse_counters_by_series_and_timestamp(mut metrics: Vec<Metric>) -> Ve
         let mut is_disjoint = false;
         let mut had_match = false;
         let mut inner_idx = curr_idx + 1;
-        while inner_idx < len {
-            let inner_metric = &metrics[inner_idx];
+        while inner_idx < metrics.len() {
             let mut should_advance = true;
-            if let MetricValue::Counter { value } = inner_metric.value() {
-                let other_counter_ts = inner_metric
+            if let MetricValue::Counter { value } = metrics[inner_idx].value() {
+                let other_counter_ts = metrics[inner_idx]
                     .data()
                     .timestamp()
                     .map(|dt| dt.timestamp())
                     .unwrap_or(now_ts);
-                if curr_metric_series == inner_metric.series() && counter_ts == other_counter_ts {
+                if metrics[curr_idx].series() == metrics[inner_idx].series()
+                    && counter_ts == other_counter_ts
+                {
                     had_match = true;
 
                     // Collapse this counter by accumulating its value, and its
@@ -395,8 +392,10 @@ mod tests {
         assert_eq!(expected, actual);
     }
 
+    /// Tests collapse_counters_by_series_and_timestamp() using 1,000,000 identical metrics with no
+    /// timestamp
     #[test]
-    fn collapse_identical_metrics_counter_large() {
+    fn collapse_identical_metrics_counter_large_no_timestamp() {
         let counter_value = 42.0;
 
         let mut input = vec![];
@@ -413,6 +412,30 @@ mod tests {
         assert_eq!(expected, actual);
     }
 
+    /// Tests collapse_counters_by_series_and_timestamp() using 1,000,000 identical metrics with no
+    /// timestamp
+    #[test]
+    fn collapse_identical_metrics_counter_large_with_timestamp() {
+        let counter_value = 42.0;
+
+        let mut input = vec![];
+
+        let now_ts = Some(Utc::now());
+
+        // need to have enough runtime to trigger the sampling
+        for _ in 0..1_000_000 {
+            input.push(create_counter("basic", counter_value).with_timestamp(now_ts));
+        }
+
+        let expected_counter_value = input.len() as f64 * counter_value;
+        let expected = vec![create_counter("basic", expected_counter_value).with_timestamp(now_ts)];
+        let actual = collapse_counters_by_series_and_timestamp(input);
+
+        assert_eq!(expected, actual);
+    }
+
+    /// Tests collapse_counters_by_series_and_timestamp() using 10,000 metrics where every 10th
+    /// metric is a collapsible one and the remaining have unique, existing timestamps.
     #[test]
     fn collapse_identical_metrics_counter_mix() {
         let counter_value = 42.0;
