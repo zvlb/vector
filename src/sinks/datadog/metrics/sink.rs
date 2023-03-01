@@ -396,8 +396,8 @@ mod tests {
         let expected = vec![create_counter("basic", expected_counter_value)];
 
         let guard = pprof::ProfilerGuardBuilder::default()
-            .frequency(10)
-            //.blocklist(&["libc", "libgcc", "pthread", "vdso"])
+            .frequency(100)
+            .blocklist(&["libc", "libgcc", "pthread", "vdso"])
             .build()
             .unwrap();
 
@@ -434,8 +434,8 @@ mod tests {
         let expected = vec![create_counter("basic", expected_counter_value).with_timestamp(now_ts)];
 
         let guard = pprof::ProfilerGuardBuilder::default()
-            .frequency(10)
-            //.blocklist(&["libc", "libgcc", "pthread", "vdso"])
+            .frequency(100)
+            .blocklist(&["libc", "libgcc", "pthread", "vdso"])
             .build()
             .unwrap();
 
@@ -485,8 +485,8 @@ mod tests {
         let _expected = vec![create_counter("basic", expected_counter_value)];
 
         let guard = pprof::ProfilerGuardBuilder::default()
-            .frequency(10)
-            //.blocklist(&["libc", "libgcc", "pthread", "vdso"])
+            .frequency(100)
+            .blocklist(&["libc", "libgcc", "pthread", "vdso"])
             .build()
             .unwrap();
 
