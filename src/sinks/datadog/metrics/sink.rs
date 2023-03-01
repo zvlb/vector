@@ -103,9 +103,10 @@ where
             // Aggregate counters with identical timestamps, otherwise identical counters (same
             // series and same timestamp, when rounded to whole seconds) will be dropped in a
             // last-write-wins situation when they hit the DD metrics intake.
-            .map(|((api_key, endpoint), metrics)| {
-                let collapsed_metrics = collapse_counters_by_series_and_timestamp(metrics);
-                ((api_key, endpoint), collapsed_metrics)
+            .map(|((api_key, endpoint), mut metrics)| {
+                //let collapsed_metrics = collapse_counters_by_series_and_timestamp(metrics);
+                collapse_counters_by_series_and_timestamp(&mut metrics);
+                ((api_key, endpoint), metrics)
             })
             // Sort metrics by name, which significantly improves HTTP compression.
             .map(|((api_key, endpoint), mut metrics)| {
@@ -159,7 +160,7 @@ where
     }
 }
 
-pub fn collapse_counters_by_series_and_timestamp(mut metrics: Vec<Metric>) -> Vec<Metric> {
+pub fn collapse_counters_by_series_and_timestamp(metrics: &mut Vec<Metric>) {
     // NOTE: Astute observers may recognize that this behavior could also be acheived by using
     // `Vec::dedup_by`, but the clincher is that `dedup_by` requires a sorted vector to begin with.
     //
@@ -189,75 +190,22 @@ pub fn collapse_counters_by_series_and_timestamp(mut metrics: Vec<Metric>) -> Ve
     while idx < metrics.len() {
         let curr_idx = idx;
 
-        let counter_ts = match metrics[curr_idx].value() {
-            MetricValue::Counter { .. } => metrics[curr_idx]
-                .data()
-                .timestamp()
-                .map(|dt| dt.timestamp())
-                .unwrap_or(now_ts),
-            // If it's not a counter, we can skip it.
-            _ => {
-                idx += 1;
-                continue;
-            }
-        };
-
-        // TODO: seems like we can optimize this by doing fewer lookups, at least.
-
         let mut accumulated_value = 0.0;
         let mut accumulated_finalizers = EventFinalizers::default();
-
-        // Now go through each metric _after_ the current one to see if it matches the
-        // current metric: is a counter, with the same name and timestamp. If it is, we
-        // accumulate its value and then remove it.
-        //
-        // Otherwise, we skip it.
-        let mut is_disjoint = false;
         let mut had_match = false;
-        let mut inner_idx = curr_idx + 1;
-        while inner_idx < metrics.len() {
-            let mut should_advance = true;
-            if let MetricValue::Counter { value } = metrics[inner_idx].value() {
-                let other_counter_ts = metrics[inner_idx]
-                    .data()
-                    .timestamp()
-                    .map(|dt| dt.timestamp())
-                    .unwrap_or(now_ts);
-                if metrics[curr_idx].series() == metrics[inner_idx].series()
-                    && counter_ts == other_counter_ts
-                {
-                    had_match = true;
 
-                    // Collapse this counter by accumulating its value, and its
-                    // finalizers, and removing it from the original vector of metrics.
-                    accumulated_value += *value;
-
-                    let mut old_metric = metrics.swap_remove(inner_idx);
-                    accumulated_finalizers.merge(old_metric.metadata_mut().take_finalizers());
-                    should_advance = false;
-                } else {
-                    // We hit a counter that _doesn't_ match, but we can't just skip
-                    // it because we also need to evaulate it against all the
-                    // counters that come after it, so we only increment the index
-                    // for this inner loop.
-                    //
-                    // As well, we mark ourselves to stop incrementing the outer
-                    // index if we find more counters to accumulate, because we've
-                    // hit a disjoint counter here. While we may be continuing to
-                    // shrink the count of remaining metrics from accumulating,
-                    // we have to ensure this counter we just visited is visited by
-                    // the outer loop.
-                    is_disjoint = true;
-                }
+        match metrics[curr_idx].value() {
+            MetricValue::Counter { .. } => {
+                had_match = collapse_counters(
+                    metrics,
+                    curr_idx,
+                    &mut idx,
+                    now_ts,
+                    &mut accumulated_value,
+                    &mut accumulated_finalizers,
+                );
             }
-
-            if should_advance {
-                inner_idx += 1;
-
-                if !is_disjoint {
-                    idx += 1;
-                }
-            }
+            _ => {}
         }
 
         // If we had matches during the accumulator phase, update our original counter.
@@ -276,8 +224,82 @@ pub fn collapse_counters_by_series_and_timestamp(mut metrics: Vec<Metric>) -> Ve
 
         idx += 1;
     }
+}
 
-    metrics
+fn collapse_counters(
+    metrics: &mut Vec<Metric>,
+    curr_idx: usize,
+    idx: &mut usize,
+    now_ts: i64,
+    accumulated_value: &mut f64,
+    accumulated_finalizers: &mut EventFinalizers,
+) -> bool {
+    let curr_metric = &metrics[curr_idx];
+
+    let counter_ts = curr_metric
+        .data()
+        .timestamp()
+        .map(|dt| dt.timestamp())
+        .unwrap_or(now_ts);
+
+    let curr_series = &(curr_metric.series().clone());
+
+    // Now go through each metric _after_ the current one to see if it matches the
+    // current metric: is a counter, with the same name and timestamp. If it is, we
+    // accumulate its value and then remove it.
+    //
+    // Otherwise, we skip it.
+    let mut is_disjoint = false;
+    let mut had_match = false;
+    let mut inner_idx = curr_idx + 1;
+
+    while inner_idx < metrics.len() {
+        let inner_metric = &metrics[inner_idx];
+        let mut should_advance = true;
+
+        if let MetricValue::Counter { value } = inner_metric.value() {
+            let other_counter_ts = inner_metric
+                .data()
+                .timestamp()
+                .map(|dt| dt.timestamp())
+                .unwrap_or(now_ts);
+
+            if curr_series == inner_metric.series() && counter_ts == other_counter_ts {
+                had_match = true;
+
+                // Collapse this counter by accumulating its value, and its
+                // finalizers, and removing it from the original vector of metrics.
+                *accumulated_value += *value;
+
+                let mut old_metric = metrics.swap_remove(inner_idx);
+                accumulated_finalizers.merge(old_metric.metadata_mut().take_finalizers());
+                should_advance = false;
+            } else {
+                // We hit a counter that _doesn't_ match, but we can't just skip
+                // it because we also need to evaulate it against all the
+                // counters that come after it, so we only increment the index
+                // for this inner loop.
+                //
+                // As well, we mark ourselves to stop incrementing the outer
+                // index if we find more counters to accumulate, because we've
+                // hit a disjoint counter here. While we may be continuing to
+                // shrink the count of remaining metrics from accumulating,
+                // we have to ensure this counter we just visited is visited by
+                // the outer loop.
+                is_disjoint = true;
+            }
+        }
+
+        if should_advance {
+            inner_idx += 1;
+
+            if !is_disjoint {
+                *idx += 1;
+            }
+        }
+    }
+
+    had_match
 }
 
 #[cfg(test)]
@@ -318,32 +340,32 @@ mod tests {
 
     #[test]
     fn collapse_no_metrics() {
-        let input = Vec::new();
-        let expected = input.clone();
-        let actual = collapse_counters_by_series_and_timestamp(input);
+        let mut actual = Vec::new();
+        let expected = actual.clone();
+        collapse_counters_by_series_and_timestamp(&mut actual);
 
         assert_eq!(expected, actual);
     }
 
     #[test]
     fn collapse_single_metric() {
-        let input = vec![create_counter("basic", 42.0)];
-        let expected = input.clone();
-        let actual = collapse_counters_by_series_and_timestamp(input);
+        let mut actual = vec![create_counter("basic", 42.0)];
+        let expected = actual.clone();
+        collapse_counters_by_series_and_timestamp(&mut actual);
 
         assert_eq!(expected, actual);
     }
 
     #[test]
     fn collapse_identical_metrics_gauge() {
-        let input = vec![create_gauge("basic", 42.0), create_gauge("basic", 42.0)];
-        let expected = input.clone();
-        let actual = collapse_counters_by_series_and_timestamp(input);
+        let mut actual = vec![create_gauge("basic", 42.0), create_gauge("basic", 42.0)];
+        let expected = actual.clone();
+        collapse_counters_by_series_and_timestamp(&mut actual);
 
         assert_eq!(expected, actual);
 
         let gauge_value = 41.0;
-        let input = vec![
+        let mut actual = vec![
             create_gauge("basic", gauge_value),
             create_gauge("basic", gauge_value),
             create_gauge("basic", gauge_value),
@@ -352,8 +374,8 @@ mod tests {
             create_gauge("basic", gauge_value),
             create_gauge("basic", gauge_value),
         ];
-        let expected = input.clone();
-        let actual = collapse_counters_by_series_and_timestamp(input);
+        let expected = actual.clone();
+        collapse_counters_by_series_and_timestamp(&mut actual);
 
         assert_eq!(expected, actual);
     }
@@ -362,7 +384,7 @@ mod tests {
     fn collapse_identical_metrics_counter_og() {
         let counter_value = 42.0;
 
-        let input = vec![
+        let mut actual = vec![
             create_counter("basic", counter_value),
             create_counter("basic", counter_value),
             create_counter("basic", counter_value),
@@ -372,9 +394,9 @@ mod tests {
             create_counter("basic", counter_value),
         ];
 
-        let expected_counter_value = input.len() as f64 * counter_value;
+        let expected_counter_value = actual.len() as f64 * counter_value;
         let expected = vec![create_counter("basic", expected_counter_value)];
-        let actual = collapse_counters_by_series_and_timestamp(input);
+        collapse_counters_by_series_and_timestamp(&mut actual);
 
         assert_eq!(expected, actual);
     }
@@ -385,14 +407,14 @@ mod tests {
     fn collapse_identical_metrics_counter_large_no_timestamp() {
         let counter_value = 42.0;
 
-        let mut input = vec![];
+        let mut actual = vec![];
 
         // need to have enough runtime to trigger the sampling
         for _ in 0..1_000_000 {
-            input.push(create_counter("basic", counter_value));
+            actual.push(create_counter("basic", counter_value));
         }
 
-        let expected_counter_value = input.len() as f64 * counter_value;
+        let expected_counter_value = actual.len() as f64 * counter_value;
         let expected = vec![create_counter("basic", expected_counter_value)];
 
         let guard = pprof::ProfilerGuardBuilder::default()
@@ -401,7 +423,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let actual = collapse_counters_by_series_and_timestamp(input);
+        collapse_counters_by_series_and_timestamp(&mut actual);
 
         if let Ok(report) = guard.report().build() {
             println!("report: {:?}", &report);
@@ -421,16 +443,16 @@ mod tests {
     fn collapse_identical_metrics_counter_large_with_timestamp() {
         let counter_value = 42.0;
 
-        let mut input = vec![];
+        let mut actual = vec![];
 
         let now_ts = Some(Utc::now());
 
         // need to have enough runtime to trigger the sampling
         for _ in 0..1_000_000 {
-            input.push(create_counter("basic", counter_value).with_timestamp(now_ts));
+            actual.push(create_counter("basic", counter_value).with_timestamp(now_ts));
         }
 
-        let expected_counter_value = input.len() as f64 * counter_value;
+        let expected_counter_value = actual.len() as f64 * counter_value;
         let expected = vec![create_counter("basic", expected_counter_value).with_timestamp(now_ts)];
 
         let guard = pprof::ProfilerGuardBuilder::default()
@@ -439,7 +461,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let actual = collapse_counters_by_series_and_timestamp(input);
+        collapse_counters_by_series_and_timestamp(&mut actual);
 
         if let Ok(report) = guard.report().build() {
             println!("report: {:?}", &report);
@@ -459,7 +481,7 @@ mod tests {
     fn collapse_identical_metrics_counter_mix() {
         let counter_value = 42.0;
 
-        let mut input = vec![];
+        let mut actual = vec![];
 
         let mut j = 0;
         let mut f = 0;
@@ -468,10 +490,10 @@ mod tests {
 
         for _ in 0..10_000 {
             if j == 10 {
-                input.push(create_counter("basic", counter_value));
+                actual.push(create_counter("basic", counter_value));
                 j = 0;
             } else {
-                input.push(
+                actual.push(
                     create_counter("basic", counter_value)
                         .with_timestamp(Some(now + Duration::seconds(f))),
                 );
@@ -481,7 +503,7 @@ mod tests {
             f = f + 1;
         }
 
-        let expected_counter_value = input.len() as f64 * counter_value;
+        let expected_counter_value = actual.len() as f64 * counter_value;
         let _expected = vec![create_counter("basic", expected_counter_value)];
 
         let guard = pprof::ProfilerGuardBuilder::default()
@@ -490,7 +512,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let _actual = collapse_counters_by_series_and_timestamp(input);
+        collapse_counters_by_series_and_timestamp(&mut actual);
 
         if let Ok(report) = guard.report().build() {
             println!("report: {:?}", &report);
@@ -500,8 +522,6 @@ mod tests {
             //options.image_width = Some(2500);
             report.flamegraph_with_options(file, &mut options).unwrap();
         };
-
-        assert_eq!(9, 9);
     }
 
     #[derive(Eq, Ord, PartialEq, PartialOrd)]
@@ -545,15 +565,15 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_counter_collapse(input in arb_collapsible_metrics()) {
-            let mut expected_output = input.clone();
+        fn test_counter_collapse(mut actual in arb_collapsible_metrics()) {
+            let mut expected_output = actual.clone();
             expected_output.sort_by_cached_key(MetricCollapseSort::from_metric);
             expected_output.dedup_by(collapse_dedup_fn);
 
-            let mut actual_output = collapse_counters_by_series_and_timestamp(input);
-            actual_output.sort_by_cached_key(MetricCollapseSort::from_metric);
+            collapse_counters_by_series_and_timestamp(&mut actual);
+            actual.sort_by_cached_key(MetricCollapseSort::from_metric);
 
-            prop_assert_eq!(expected_output, actual_output);
+            prop_assert_eq!(expected_output, actual);
         }
     }
 }
