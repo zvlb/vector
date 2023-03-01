@@ -1,4 +1,4 @@
-use std::{fmt, fs::File, sync::Arc};
+use std::{fmt, sync::Arc};
 
 use async_trait::async_trait;
 use chrono::Utc;
@@ -160,12 +160,6 @@ where
 }
 
 pub fn collapse_counters_by_series_and_timestamp(mut metrics: Vec<Metric>) -> Vec<Metric> {
-    let guard = pprof::ProfilerGuardBuilder::default()
-        .frequency(10)
-        //.blocklist(&["libc", "libgcc", "pthread", "vdso"])
-        .build()
-        .unwrap();
-
     // NOTE: Astute observers may recognize that this behavior could also be acheived by using
     // `Vec::dedup_by`, but the clincher is that `dedup_by` requires a sorted vector to begin with.
     //
@@ -283,20 +277,13 @@ pub fn collapse_counters_by_series_and_timestamp(mut metrics: Vec<Metric>) -> Ve
         idx += 1;
     }
 
-    if let Ok(report) = guard.report().build() {
-        println!("report: {:?}", &report);
-
-        let file = File::create("flamegraph.svg").unwrap();
-        let mut options = pprof::flamegraph::Options::default();
-        //options.image_width = Some(2500);
-        report.flamegraph_with_options(file, &mut options).unwrap();
-    };
-
     metrics
 }
 
 #[cfg(test)]
 mod tests {
+    use std::fs::File;
+
     use chrono::{DateTime, Duration, Utc};
     use proptest::prelude::*;
     use vector_core::event::{Metric, MetricKind, MetricValue};
@@ -407,7 +394,23 @@ mod tests {
 
         let expected_counter_value = input.len() as f64 * counter_value;
         let expected = vec![create_counter("basic", expected_counter_value)];
+
+        let guard = pprof::ProfilerGuardBuilder::default()
+            .frequency(10)
+            //.blocklist(&["libc", "libgcc", "pthread", "vdso"])
+            .build()
+            .unwrap();
+
         let actual = collapse_counters_by_series_and_timestamp(input);
+
+        if let Ok(report) = guard.report().build() {
+            println!("report: {:?}", &report);
+
+            let file = File::create("flamegraph.svg").unwrap();
+            let mut options = pprof::flamegraph::Options::default();
+            //options.image_width = Some(2500);
+            report.flamegraph_with_options(file, &mut options).unwrap();
+        };
 
         assert_eq!(expected, actual);
     }
@@ -429,7 +432,23 @@ mod tests {
 
         let expected_counter_value = input.len() as f64 * counter_value;
         let expected = vec![create_counter("basic", expected_counter_value).with_timestamp(now_ts)];
+
+        let guard = pprof::ProfilerGuardBuilder::default()
+            .frequency(10)
+            //.blocklist(&["libc", "libgcc", "pthread", "vdso"])
+            .build()
+            .unwrap();
+
         let actual = collapse_counters_by_series_and_timestamp(input);
+
+        if let Ok(report) = guard.report().build() {
+            println!("report: {:?}", &report);
+
+            let file = File::create("flamegraph.svg").unwrap();
+            let mut options = pprof::flamegraph::Options::default();
+            //options.image_width = Some(2500);
+            report.flamegraph_with_options(file, &mut options).unwrap();
+        };
 
         assert_eq!(expected, actual);
     }
@@ -464,7 +483,23 @@ mod tests {
 
         let expected_counter_value = input.len() as f64 * counter_value;
         let _expected = vec![create_counter("basic", expected_counter_value)];
+
+        let guard = pprof::ProfilerGuardBuilder::default()
+            .frequency(10)
+            //.blocklist(&["libc", "libgcc", "pthread", "vdso"])
+            .build()
+            .unwrap();
+
         let _actual = collapse_counters_by_series_and_timestamp(input);
+
+        if let Ok(report) = guard.report().build() {
+            println!("report: {:?}", &report);
+
+            let file = File::create("flamegraph.svg").unwrap();
+            let mut options = pprof::flamegraph::Options::default();
+            //options.image_width = Some(2500);
+            report.flamegraph_with_options(file, &mut options).unwrap();
+        };
 
         assert_eq!(9, 9);
     }
