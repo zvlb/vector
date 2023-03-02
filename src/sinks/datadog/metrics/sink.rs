@@ -236,11 +236,11 @@ fn collapse_counters(
 ) -> bool {
     let curr_metric = &metrics[curr_idx];
 
-    let counter_ts = curr_metric
-        .data()
-        .timestamp()
-        .map(|dt| dt.timestamp())
-        .unwrap_or(now_ts);
+    let mut counter_epoch = curr_metric.data().epoch();
+
+    if counter_epoch == 0 {
+        counter_epoch = now_ts;
+    }
 
     let curr_series = &(curr_metric.series().clone());
 
@@ -258,13 +258,12 @@ fn collapse_counters(
         let mut should_advance = true;
 
         if let MetricValue::Counter { value } = inner_metric.value() {
-            let other_counter_ts = inner_metric
-                .data()
-                .timestamp()
-                .map(|dt| dt.timestamp())
-                .unwrap_or(now_ts);
+            let mut other_counter_epoch = inner_metric.data().epoch();
+            if other_counter_epoch == 0 {
+                other_counter_epoch = now_ts;
+            }
 
-            if curr_series == inner_metric.series() && counter_ts == other_counter_ts {
+            if curr_series == inner_metric.series() && counter_epoch == other_counter_epoch {
                 had_match = true;
 
                 // Collapse this counter by accumulating its value, and its
