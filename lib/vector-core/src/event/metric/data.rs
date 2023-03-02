@@ -32,6 +32,9 @@ pub struct MetricTime {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<DateTime<Utc>>,
 
+    /// The unix epoch representation of the timestamp of when the metric was created.
+    pub epoch: i64,
+
     /// The interval, in milliseconds, of this metric.
     ///
     /// Intervals represent the time window over which this metric applies, and is generally only
@@ -44,6 +47,11 @@ impl MetricData {
     /// Gets a reference to the timestamp for this data, if available.
     pub fn timestamp(&self) -> Option<&DateTime<Utc>> {
         self.time.timestamp.as_ref()
+    }
+
+    /// Gets a reference to the timestamp for this data, if available.
+    pub fn epoch(&self) -> i64 {
+        self.time.epoch
     }
 
     /// Gets a reference to the value of this data.
@@ -126,6 +134,7 @@ impl MetricData {
         self.value.add(&other.value) && {
             self.time.timestamp = new_ts;
             self.time.interval_ms = new_interval;
+            self.update_epoch();
             true
         }
     }
@@ -149,6 +158,14 @@ impl MetricData {
     /// Zeroes out the data in this metric.
     pub fn zero(&mut self) {
         self.value.zero();
+    }
+
+    pub fn update_epoch(&mut self) {
+        if let Some(ts) = self.timestamp() {
+            self.time.epoch = ts.timestamp();
+        } else {
+            self.time.epoch = 0;
+        }
     }
 }
 

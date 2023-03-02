@@ -87,6 +87,7 @@ impl Metric {
             data: MetricData {
                 time: MetricTime {
                     timestamp: None,
+                    epoch: 0,
                     interval_ms: None,
                 },
                 kind,
@@ -117,6 +118,7 @@ impl Metric {
     #[must_use]
     pub fn with_timestamp(mut self, timestamp: Option<DateTime<Utc>>) -> Self {
         self.data.time.timestamp = timestamp;
+        self.data.update_epoch();
         self
     }
 
@@ -227,6 +229,12 @@ impl Metric {
     #[inline]
     pub fn timestamp(&self) -> Option<DateTime<Utc>> {
         self.data.time.timestamp
+    }
+
+    /// Gets a reference to the epoch timestamp of this metric. Zero if no timestamp exists.
+    #[inline]
+    pub fn epoch(&self) -> i64 {
+        self.data.time.epoch
     }
 
     /// Gets a reference to the interval (in milliseconds) coverred by this metric, if it exists.
