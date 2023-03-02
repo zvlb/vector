@@ -242,6 +242,9 @@ fn collapse_counters(
         counter_epoch = now_ts;
     }
 
+    // Clone the series for comparison within the inner loop. This is generally more optimized than
+    // indexing into the metrics array again in the inner loop. Clone is needed because can't
+    // borrow the metrics array twice.
     let curr_series = &(curr_metric.series().clone());
 
     // Now go through each metric _after_ the current one to see if it matches the
