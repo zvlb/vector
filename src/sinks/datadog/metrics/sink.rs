@@ -263,7 +263,9 @@ fn collapse_counters(
                 other_counter_epoch = now_ts;
             }
 
-            if curr_series == inner_metric.series() && counter_epoch == other_counter_epoch {
+            // Order of comparison matters here. Compare to the timespamps first as the series
+            // comparison is much more expensive.
+            if counter_epoch == other_counter_epoch && curr_series == inner_metric.series() {
                 had_match = true;
 
                 // Collapse this counter by accumulating its value, and its
