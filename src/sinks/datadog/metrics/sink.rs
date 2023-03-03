@@ -209,6 +209,10 @@ pub fn collapse_counters_by_series_and_timestamp(metrics: &mut Vec<Metric>) {
     while idx < tail - 1 {
         match metrics[idx].value() {
             MetricValue::Counter { .. } => {
+                // Maintain a separate tracking of the current index, for lookup in the array post
+                // collapsing, since the `idx` is modified within the aggregation function.
+                let curr_idx = idx;
+
                 // Split the metrics array into two mutable slices. This allows us to take an
                 // immutable reference to the "current" metric that will be used to compare against
                 // the right hand slice, which needs to be mutable as the helper function takes
@@ -232,7 +236,7 @@ pub fn collapse_counters_by_series_and_timestamp(metrics: &mut Vec<Metric>) {
                     // the end, as they will have already been processed.
                     tail -= n_collapsed;
 
-                    let metric = metrics.get_mut(idx).expect("current index must exist");
+                    let metric = metrics.get_mut(curr_idx).expect("current index must exist");
                     match metric.value_mut() {
                         MetricValue::Counter { value } => {
                             *value += accumulated_value;
@@ -288,39 +292,36 @@ fn collapse_counters_matching_current(
         let inner_metric = &mut rhs[rhs_idx];
         let mut should_advance = true;
 
-        let other_counter_ts = get_timestamp(inner_metric, now_ts);
+        if let MetricValue::Counter { value } = inner_metric.value() {
+            let other_counter_ts = get_timestamp(inner_metric, now_ts);
 
-        // Order of comparison matters here. Compare to the timespamps first as the series
-        // comparison is much more expensive.
-        if counter_ts == other_counter_ts && curr_series == inner_metric.series() {
-            // Accumulating the counter's  value, and it's finalizers.
-
-            // (Always true)
-            if let MetricValue::Counter { value } = inner_metric.value() {
+            // Order of comparison matters here. Compare to the timespamps first as the series
+            // comparison is much more expensive.
+            if counter_ts == other_counter_ts && curr_series == inner_metric.series() {
+                // Accumulating the counter's  value, and it's finalizers.
                 accumulated_value += value;
+                accumulated_finalizers.merge(inner_metric.metadata_mut().take_finalizers());
+
+                // Collapse the counter by cloning in the metric from the moving tail of the array to replace
+                // the collapsed metric.
+                rhs[rhs_idx] = rhs[tail - 1].clone();
+                tail -= 1;
+                should_advance = false;
+                n_collapsed += 1;
+            } else {
+                // We hit a counter that _doesn't_ match, but we can't just skip
+                // it because we also need to evaluate it against all the
+                // counters that come after it, so we only increment the index
+                // for this inner loop.
+                //
+                // As well, we mark ourselves to stop incrementing the outer
+                // index if we find more counters to accumulate, because we've
+                // hit a disjoint counter here. While we may be continuing to
+                // shrink the count of remaining metrics from accumulating,
+                // we have to ensure this counter we just visited is visited by
+                // the outer loop.
+                is_disjoint = true;
             }
-
-            accumulated_finalizers.merge(inner_metric.metadata_mut().take_finalizers());
-
-            // Collapse the counter by cloning in the metric from the moving tail of the array to replace
-            // the collapsed metric.
-            rhs[rhs_idx] = rhs[tail - 1].clone();
-            tail -= 1;
-            should_advance = false;
-            n_collapsed += 1;
-        } else {
-            // We hit a counter that _doesn't_ match, but we can't just skip
-            // it because we also need to evaluate it against all the
-            // counters that come after it, so we only increment the index
-            // for this inner loop.
-            //
-            // As well, we mark ourselves to stop incrementing the outer
-            // index if we find more counters to accumulate, because we've
-            // hit a disjoint counter here. While we may be continuing to
-            // shrink the count of remaining metrics from accumulating,
-            // we have to ensure this counter we just visited is visited by
-            // the outer loop.
-            is_disjoint = true;
         }
 
         if should_advance {
