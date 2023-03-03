@@ -160,21 +160,7 @@ where
     }
 }
 
-fn _pmetric(metrics: &[Metric]) {
-    let mut p = vec![];
-    for metric in metrics {
-        //if let MetricValue::Counter { _value } = metric.value() {
-        p.push(metric.data().epoch());
-        //}
-    }
-
-    println!("{:?}", p);
-}
-
 pub fn collapse_counters_by_series_and_timestamp(metrics: &mut Vec<Metric>) {
-    //println!("entry");
-    //pmetric(metrics);
-    //println!();
     let og_len = metrics.len();
 
     if og_len < 2 {
@@ -215,14 +201,9 @@ pub fn collapse_counters_by_series_and_timestamp(metrics: &mut Vec<Metric>) {
         let mut accumulated_finalizers = EventFinalizers::default();
         let mut n_collapsed = 0;
 
-        //println!("idx: {} og_len: {} iter_len: {}", idx, og_len, iter_len);
-
         match metrics[idx].value() {
             MetricValue::Counter { .. } => {
-                //let cur_idx = idx;
                 let (left, right) = metrics.split_at_mut(idx + 1);
-
-                //let curr_metric = &left[idx];
 
                 n_collapsed = collapse_counters(
                     &left[idx],
@@ -233,7 +214,6 @@ pub fn collapse_counters_by_series_and_timestamp(metrics: &mut Vec<Metric>) {
                     &mut accumulated_value,
                     &mut accumulated_finalizers,
                 );
-                //println!("n_collapsed: {}", n_collapsed);
             }
             // skip non-counters
             _ => {}
@@ -258,19 +238,9 @@ pub fn collapse_counters_by_series_and_timestamp(metrics: &mut Vec<Metric>) {
         idx += 1;
     }
 
-    //println!("while");
-    //pmetric(metrics);
-    //println!();
-
-    //println!("og_len {}, total_collapsed {} ", og_len, total_collapsed);
-
     if total_collapsed > 0 {
         metrics.truncate(og_len - total_collapsed);
     }
-
-    //println!("exit");
-    //pmetric(metrics);
-    //println!();
 }
 
 // Now go through each metric _after_ the current one to see if it matches the
@@ -302,14 +272,6 @@ fn collapse_counters(
     let mut right_end = right.len() - dead_end;
 
     while right_idx < right_end {
-        //println!(
-        //    "iloop idx: {} right_idx: {} right_end: {} n_collapsed: {}",
-        //    idx, right_idx, right_end, n_collapsed
-        //);
-        //println!("iloop");
-        //pmetric(right);
-        //println!();
-
         let inner_metric = &mut right[right_idx];
         let mut should_advance = true;
 
@@ -324,11 +286,6 @@ fn collapse_counters(
         // Order of comparison matters here. Compare to the timespamps first as the series
         // comparison is much more expensive.
         if counter_epoch == other_counter_epoch && curr_series == inner_metric.series() {
-            //println!(
-            //    "match at idx: {} right_idx: {} right_end: {} n_collapsed: {}",
-            //    idx, right_idx, right_end, n_collapsed
-            //);
-
             // Collapse this counter by accumulating its value, and its
             // finalizers, and removing it from the original vector of metrics.
 
