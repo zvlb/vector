@@ -347,6 +347,8 @@ fn get_timestamp(counter: &Metric, default: i64) -> i64 {
 #[cfg(test)]
 mod tests {
 
+    use std::fs::File;
+
     use chrono::{DateTime, Duration, Utc};
     use proptest::prelude::*;
     use vector_core::event::{Metric, MetricKind, MetricValue};
@@ -449,8 +451,198 @@ mod tests {
         assert_eq!(expected, actual);
     }
 
-    /// Tests collapse_counters_by_series_and_timestamp() where every other counter
-    /// is collapsible and the remaining have unique, existing timestamps.
+    ///// Tests collapse_counters_by_series_and_timestamp() where every other counter
+    ///// is collapsible and the remaining have unique, existing timestamps.
+    //#[test]
+    //fn collapse_identical_metrics_counter_even() {
+    //    let counter_value = 1.0;
+
+    //    let mut actual = vec![];
+    //    let mut expected = vec![];
+
+    //    let now = Utc::now();
+
+    //    let n = 10;
+
+    //    expected.push(create_counter("basic", counter_value * (n as f64 / 2.0)));
+
+    //    for i in 0..n {
+    //        if i % 2 == 0 {
+    //            actual.push(create_counter("basic", counter_value));
+    //        } else {
+    //            actual.push(
+    //                create_counter("basic", counter_value)
+    //                    .with_timestamp(Some(now + Duration::seconds(i))),
+    //            );
+    //            expected.push(
+    //                create_counter("basic", counter_value)
+    //                    .with_timestamp(Some(now + Duration::seconds(i))),
+    //            );
+    //        }
+    //    }
+
+    //    collapse_counters_by_series_and_timestamp(&mut actual);
+
+    //    let expected_value = if let MetricValue::Counter { value } = expected[0].value() {
+    //        *value
+    //    } else {
+    //        1.0
+    //    };
+
+    //    let actual_value = if let MetricValue::Counter { value } = actual[0].value() {
+    //        *value
+    //    } else {
+    //        0.0
+    //    };
+
+    //    assert_eq!(expected_value, actual_value);
+    //    assert_eq!(expected.len(), actual.len());
+    //}
+
+    ///// Tests collapse_counters_by_series_and_timestamp() where no
+    ///// counter is collapsible- all have unique, existing timestamps.
+    //#[test]
+    //fn collapse_identical_metrics_counter_all_unique() {
+    //    let counter_value = 1.0;
+    //    let mut actual = vec![];
+    //    let now = Utc::now();
+
+    //    for i in 0..10 {
+    //        actual.push(
+    //            create_counter("basic", counter_value)
+    //                .with_timestamp(Some(now + Duration::seconds(i))),
+    //        );
+    //    }
+
+    //    let expected = actual.clone();
+
+    //    collapse_counters_by_series_and_timestamp(&mut actual);
+
+    //    assert_eq!(expected, actual);
+    //}
+
+    /// Tests collapse_counters_by_series_and_timestamp() using 1,000,000 identical metrics with no
+    /// timestamp
+    #[test]
+    fn collapse_identical_metrics_counter_large_no_timestamp() {
+        let counter_value = 42.0;
+
+        let mut actual = vec![];
+
+        // need to have enough runtime to trigger the sampling
+        for _ in 0..1_000_000 {
+            actual.push(create_counter("basic", counter_value));
+        }
+
+        let expected_counter_value = actual.len() as f64 * counter_value;
+        let expected = vec![create_counter("basic", expected_counter_value)];
+
+        let guard = pprof::ProfilerGuardBuilder::default()
+            .frequency(100)
+            .blocklist(&["libc", "libgcc", "pthread", "vdso"])
+            .build()
+            .unwrap();
+
+        collapse_counters_by_series_and_timestamp(&mut actual);
+
+        if let Ok(report) = guard.report().build() {
+            //println!("report: {:?}", &report);
+
+            let file = File::create("flamegraph.svg").unwrap();
+            let mut options = pprof::flamegraph::Options::default();
+            report.flamegraph_with_options(file, &mut options).unwrap();
+        };
+
+        assert_eq!(expected, actual);
+    }
+
+    /// Tests collapse_counters_by_series_and_timestamp() using 1,000,000 identical metrics with no
+    /// timestamp
+    #[test]
+    fn collapse_identical_metrics_counter_large_with_timestamp() {
+        let counter_value = 42.0;
+
+        let mut actual = vec![];
+
+        let now_ts = Some(Utc::now());
+
+        // need to have enough runtime to trigger the sampling
+        for _ in 0..1_000_000 {
+            actual.push(create_counter("basic", counter_value).with_timestamp(now_ts));
+        }
+
+        let expected_counter_value = actual.len() as f64 * counter_value;
+        let expected = vec![create_counter("basic", expected_counter_value).with_timestamp(now_ts)];
+
+        let guard = pprof::ProfilerGuardBuilder::default()
+            .frequency(100)
+            .blocklist(&["libc", "libgcc", "pthread", "vdso"])
+            .build()
+            .unwrap();
+
+        collapse_counters_by_series_and_timestamp(&mut actual);
+
+        if let Ok(report) = guard.report().build() {
+            //println!("report: {:?}", &report);
+
+            let file = File::create("flamegraph.svg").unwrap();
+            let mut options = pprof::flamegraph::Options::default();
+            report.flamegraph_with_options(file, &mut options).unwrap();
+        };
+
+        assert_eq!(expected, actual);
+    }
+
+    /// Tests collapse_counters_by_series_and_timestamp() using 10,000 metrics where every 10th
+    /// metric is a collapsible one and the remaining have unique, existing timestamps.
+    #[test]
+    fn collapse_identical_metrics_counter_mix() {
+        let counter_value = 42.0;
+
+        let mut actual = vec![];
+
+        let mut j = 0;
+        let mut f = 0;
+
+        let now = Utc::now();
+
+        for _ in 0..10_000 {
+            if j == 10 {
+                actual.push(create_counter("basic", counter_value));
+                j = 0;
+            } else {
+                actual.push(
+                    create_counter("basic", counter_value)
+                        .with_timestamp(Some(now + Duration::seconds(f))),
+                );
+            }
+
+            j = j + 1;
+            f = f + 1;
+        }
+
+        let expected_counter_value = actual.len() as f64 * counter_value;
+        let _expected = vec![create_counter("basic", expected_counter_value)];
+
+        let guard = pprof::ProfilerGuardBuilder::default()
+            .frequency(100)
+            .blocklist(&["libc", "libgcc", "pthread", "vdso"])
+            .build()
+            .unwrap();
+
+        collapse_counters_by_series_and_timestamp(&mut actual);
+
+        if let Ok(report) = guard.report().build() {
+            println!("report: {:?}", &report);
+
+            let file = File::create("flamegraph.svg").unwrap();
+            let mut options = pprof::flamegraph::Options::default();
+            report.flamegraph_with_options(file, &mut options).unwrap();
+        };
+    }
+
+    /// Tests collapse_counters_by_series_and_timestamp() using 10,000 metrics where every even
+    /// metric is a collapsible one and the remaining have unique, existing timestamps.
     #[test]
     fn collapse_identical_metrics_counter_even() {
         let counter_value = 1.0;
@@ -460,7 +652,7 @@ mod tests {
 
         let now = Utc::now();
 
-        let n = 10;
+        let n = 10_000;
 
         expected.push(create_counter("basic", counter_value * (n as f64 / 2.0)));
 
@@ -497,24 +689,43 @@ mod tests {
         assert_eq!(expected.len(), actual.len());
     }
 
-    /// Tests collapse_counters_by_series_and_timestamp() where no
-    /// counter is collapsible- all have unique, existing timestamps.
+    /// Tests collapse_counters_by_series_and_timestamp() using 10,000 metrics where every no
+    /// metric is a collapsible- all have unique, existing timestamps.
     #[test]
-    fn collapse_identical_metrics_counter_all_unique() {
+    fn collapse_identical_metrics_counter_large_all_unique() {
         let counter_value = 1.0;
+
         let mut actual = vec![];
+
         let now = Utc::now();
 
-        for i in 0..10 {
+        let n = 10_000;
+
+        for i in 0..n {
             actual.push(
                 create_counter("basic", counter_value)
                     .with_timestamp(Some(now + Duration::seconds(i))),
             );
         }
 
+        let guard = pprof::ProfilerGuardBuilder::default()
+            .frequency(100)
+            .blocklist(&["libc", "libgcc", "pthread", "vdso"])
+            .build()
+            .unwrap();
+
         let expected = actual.clone();
 
         collapse_counters_by_series_and_timestamp(&mut actual);
+
+        if let Ok(report) = guard.report().build() {
+            //println!("report: {:?}", &report);
+
+            let file = File::create("flamegraph.svg").unwrap();
+            let mut options = pprof::flamegraph::Options::default();
+            //options.image_width = Some(2500);
+            report.flamegraph_with_options(file, &mut options).unwrap();
+        };
 
         assert_eq!(expected, actual);
     }
