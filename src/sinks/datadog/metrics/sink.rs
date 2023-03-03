@@ -180,7 +180,7 @@ where
 // metrics by name first, etc. Then there's the potential issue of the reordering of fields
 // changing the ordering behavior of `Metric`... and it just felt easier to write this tailored
 // algorithm for the use case at hand.
-pub fn collapse_counters_by_series_and_timestamp(metrics: &mut Vec<Metric>) {
+fn collapse_counters_by_series_and_timestamp(metrics: &mut Vec<Metric>) {
     let og_len = metrics.len();
 
     // nothing to collapse if less than two elements
@@ -207,49 +207,45 @@ pub fn collapse_counters_by_series_and_timestamp(metrics: &mut Vec<Metric>) {
     //
     // For any non-counter, we simply ignore it and leave it as-is.
     while idx < tail - 1 {
-        match metrics[idx].value() {
-            MetricValue::Counter { .. } => {
-                // Maintain a separate tracking of the current index, for lookup in the array post
-                // collapsing, since the `idx` is modified within the aggregation function.
-                let curr_idx = idx;
+        if let MetricValue::Counter { .. } = metrics[idx].value() {
+            // Maintain a separate tracking of the current index, for lookup in the array post
+            // collapsing, since the `idx` is modified within the aggregation function.
+            let curr_idx = idx;
 
-                // Split the metrics array into two mutable slices. This allows us to take an
-                // immutable reference to the "current" metric that will be used to compare against
-                // the right hand slice, which needs to be mutable as the helper function takes
-                // measures to reduce the number of loop iterations by simulating `swap_remove()`.
-                let (lhs, rhs) = metrics.split_at_mut(idx + 1);
+            // Split the metrics array into two mutable slices. This allows us to take an
+            // immutable reference to the "current" metric that will be used to compare against
+            // the right hand slice, which needs to be mutable as the helper function takes
+            // measures to reduce the number of loop iterations by simulating `swap_remove()`.
+            let (lhs, rhs) = metrics.split_at_mut(idx + 1);
 
-                let (n_collapsed, accumulated_value, accumulated_finalizers) =
-                    collapse_counters_matching_current(
-                        &lhs[idx],
-                        rhs,
-                        &mut idx,
-                        total_collapsed,
-                        now_ts,
-                    );
+            let (n_collapsed, accumulated_value, accumulated_finalizers) =
+                collapse_counters_matching_current(
+                    &lhs[idx],
+                    rhs,
+                    &mut idx,
+                    total_collapsed,
+                    now_ts,
+                );
 
-                // If we collapsed any during the aggregation phase, update the original counter.
-                if n_collapsed > 0 {
-                    total_collapsed += n_collapsed;
+            // If we collapsed any during the aggregation phase, update the original counter.
+            if n_collapsed > 0 {
+                total_collapsed += n_collapsed;
 
-                    // We do not want to iterate this outer loop over the metrics that we've dropped off
-                    // the end, as they will have already been processed.
-                    tail -= n_collapsed;
+                // We do not want to iterate this outer loop over the metrics that we've dropped off
+                // the end, as they will have already been processed.
+                tail -= n_collapsed;
 
-                    let metric = metrics.get_mut(curr_idx).expect("current index must exist");
-                    match metric.value_mut() {
-                        MetricValue::Counter { value } => {
-                            *value += accumulated_value;
-                            metric
-                                .metadata_mut()
-                                .merge_finalizers(accumulated_finalizers);
-                        }
-                        _ => unreachable!("current index must represent a counter"),
+                let metric = metrics.get_mut(curr_idx).expect("current index must exist");
+                match metric.value_mut() {
+                    MetricValue::Counter { value } => {
+                        *value += accumulated_value;
+                        metric
+                            .metadata_mut()
+                            .merge_finalizers(accumulated_finalizers);
                     }
+                    _ => unreachable!("current index must represent a counter"),
                 }
             }
-            // Skip non-counters
-            _ => {}
         }
 
         idx += 1;
