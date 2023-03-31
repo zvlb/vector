@@ -1,0 +1,40 @@
+version: '3'
+
+services:
+  dogstatsd-client-agent:
+    build: ./dogstastd_client
+    environment:
+      STATSD_HOST: datadog-agent
+    depends_on:
+      - datadog-agent
+  dogstatsd-client-agent-vector:
+    build: ./dogstastd_client
+    environment:
+      STATSD_HOST: datadog-agent-vector
+    depends_on:
+      - datadog-agent-vector
+  datadog-agent:
+    image: docker.io/datadog/agent:${CONFIG_VERSION}
+    environment:
+    - DD_API_KEY=${TEST_DATADOG_API_KEY:?TEST_DATADOG_API_KEY required}
+    - DD_DD_URL=http://fakeintake-agent:8080
+    - DD_USE_DOGSTATSD=true
+    - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
+    - DD_HOSTNAME=datadog-agent
+  datadog-agent-vector:
+    image: docker.io/datadog/agent:${CONFIG_VERSION}
+    environment:
+    - DD_API_KEY=${TEST_DATADOG_API_KEY:?TEST_DATADOG_API_KEY required}
+      #- DD_URL=http://runner:8081
+    - DD_DD_URL=http://fakeintake-agent:8080
+    - DD_USE_DOGSTATSD=true
+    - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
+    - DD_HOSTNAME=datadog-agent-vector
+  fakeintake-agent:
+    image: docker.io/datadog/fakeintake:${CONFIG_VERSION}
+  fakeintake-agent-vector:
+    image: docker.io/datadog/fakeintake:${CONFIG_VERSION}
+
+networks:
+  default:
+    name: ${VECTOR_NETWORK}

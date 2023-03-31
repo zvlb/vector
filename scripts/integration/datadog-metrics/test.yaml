@@ -1,11 +1,18 @@
 features:
 - datadog-metrics-integration-tests
 
-test_filter: '::datadog::metrics::'
+test_filter: '::datadog::metrics::integration_tests::'
 
 runner:
   env:
     TEST_DATADOG_API_KEY:
+    AGENT_PORT: '8082'
+    VECTOR_PORT: '8081'
+    TEST_LOG: ${TEST_LOG}
+      #AGENT_ONLY_DOGSTATSD_SOCKET: tests/data/datadog/dd_dogstatsd_agent_only.socket
+      #AGENT_VECTOR_DOGSTATSD_SOCKET: tests/data/datadog/dd_dogstatsd_agent_vector.socket
+      #AGENT_TO_VECTOR_URL: http://datadog-agent-to-vector:8126/api/v2/series
+      #AGENT_URL: http://datadog-agent:8126/api/v2/series
 
 matrix:
   version: [latest]
