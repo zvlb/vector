@@ -17,7 +17,7 @@ services:
     image: docker.io/datadog/agent:${CONFIG_VERSION}
     environment:
     - DD_API_KEY=${TEST_DATADOG_API_KEY:?TEST_DATADOG_API_KEY required}
-    - DD_DD_URL=http://fakeintake-agent:8080
+    - DD_DD_URL=http://fakeintake-agent:80
     - DD_USE_DOGSTATSD=true
     - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
     - DD_HOSTNAME=datadog-agent
@@ -25,8 +25,7 @@ services:
     image: docker.io/datadog/agent:${CONFIG_VERSION}
     environment:
     - DD_API_KEY=${TEST_DATADOG_API_KEY:?TEST_DATADOG_API_KEY required}
-      #- DD_URL=http://runner:8081
-    - DD_DD_URL=http://fakeintake-agent:8080
+    - DD_DD_URL=http://runner:8081
     - DD_USE_DOGSTATSD=true
     - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
     - DD_HOSTNAME=datadog-agent-vector

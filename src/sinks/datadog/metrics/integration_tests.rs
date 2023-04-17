@@ -228,6 +228,13 @@ fn vector_receive_port() -> u16 {
         .unwrap()
 }
 
+/// The port on which the Agent will send metrics to vector, and vector `datadog_agent` source will
+/// listen on
+fn vector_send_endpoint() -> String {
+    std::env::var("VECTOR_SEND_ENDPOINT")
+        .unwrap_or_else(|_| "http://127.0.0.1:80".to_string())
+}
+
 // /// The port for the http server to receive data from the agent
 // fn server_port_for_agent() -> u16 {
 //     std::env::var("AGENT_PORT")
@@ -237,9 +244,9 @@ fn vector_receive_port() -> u16 {
 // }
 
 /// The port for the http server to receive data from vector
-const fn server_port_for_vector() -> u16 {
-    1234
-}
+//const fn server_port_for_vector() -> u16 {
+//    1234
+//}
 
 // /// The agent url to post metrics to [Agent only]
 // fn agent_only_url() -> String {
@@ -314,6 +321,7 @@ async fn start_vector() -> (
     let mut builder = ConfigBuilder::default();
     builder.add_source("in", source_config);
 
+    // TODO vector send endpoint
     let dd_metrics_endpoint = format!("http://127.0.0.1:{}", server_port_for_vector());
     let cfg = format!(
         indoc! { r#"
