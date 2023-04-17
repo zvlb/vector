@@ -20,6 +20,9 @@ use tokio::time::{sleep, Duration};
 
 use super::DatadogMetricsConfig;
 use vector_core::event::{BatchNotifier, BatchStatus, Event, Metric, MetricKind, MetricValue};
+use reqwest::{Client, Method};
+use serde::Deserialize;
+
 
 use crate::{
     config::{ConfigBuilder, SinkConfig},
@@ -219,20 +222,21 @@ async fn real_endpoint() {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// The port on which the Agent will send metrics to vector, and vector `datadog_agent` source will
-/// listen on
 fn vector_receive_port() -> u16 {
-    std::env::var("VECTOR_PORT")
+    std::env::var("VECTOR_RECEIVE_PORT")
         .unwrap_or_else(|_| "8081".to_string())
         .parse::<u16>()
         .unwrap()
 }
 
-/// The port on which the Agent will send metrics to vector, and vector `datadog_agent` source will
-/// listen on
-fn vector_send_endpoint() -> String {
-    std::env::var("VECTOR_SEND_ENDPOINT")
-        .unwrap_or_else(|_| "http://127.0.0.1:80".to_string())
+fn fake_intake_vector_endpoint() -> String {
+    std::env::var("FAKE_INTAKE_VECTOR_ENDPOINT")
+        .unwrap_or_else(|_| "http://127.0.0.1:8082".to_string())
+}
+
+fn fake_intake_agent_endpoint() -> String {
+    std::env::var("FAKE_INTAKE_VECTOR_ENDPOINT")
+        .unwrap_or_else(|_| "http://127.0.0.1:8083".to_string())
 }
 
 // /// The port for the http server to receive data from the agent
@@ -321,8 +325,7 @@ async fn start_vector() -> (
     let mut builder = ConfigBuilder::default();
     builder.add_source("in", source_config);
 
-    // TODO vector send endpoint
-    let dd_metrics_endpoint = format!("http://127.0.0.1:{}", server_port_for_vector());
+    let dd_metrics_endpoint =  fake_intake_vector_endpoint();
     let cfg = format!(
         indoc! { r#"
             default_api_key = "atoken"
@@ -508,6 +511,32 @@ async fn start_vector() -> (
 //    (stats_agent_only.unwrap(), stats_agent_vector.unwrap())
 //}
 
+#[derive(Deserialize, Debug)]
+struct Payloads {
+    payloads: Vec<u8>,
+}
+
+async fn get_fakeintake_payloads(base: &str) -> Payloads {
+
+    let url = format!("{base}/fake/payloads/api/v2/series");
+    Client::new()
+        .request(Method::GET, &url)
+        .send()
+        .await
+        .unwrap_or_else(|_| panic!("Sending GET request to {} failed", url))
+        .json::<Payloads>()
+        .await
+        .expect("Parsing fakeintake payloads failed")
+}
+
+async fn get_payloads_agent() -> Payloads {
+    get_fakeintake_payloads(&fake_intake_agent_endpoint()).await
+}
+
+async fn _get_payloads_vector() -> Payloads {
+    get_fakeintake_payloads(&fake_intake_vector_endpoint()).await
+}
+
 #[tokio::test]
 async fn foo() {
     trace_init();
@@ -554,5 +583,15 @@ async fn foo() {
     //let (_stats_agent, _stats_vector) =
     //    receive_the_stats(&mut rx_agent_only, &mut rx_agent_vector).await;
 
-    sleep(Duration::from_secs(20)).await;
+    sleep(Duration::from_secs(10)).await;
+
+    let agent_payloads = get_payloads_agent().await;
+
+    //let vector_payloads = get_payloads_vector().await;
+
+    println!("{:?}", &agent_payloads.payloads);
+    //println!("{:?}", &vector_payloads);
+
+    //assert_eq!(agent_payloads.payloads, vector_payloads.payloads);
+
 }
