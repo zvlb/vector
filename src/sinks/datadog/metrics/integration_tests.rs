@@ -1,3 +1,4 @@
+
 //use axum::{
 //    body::Body,
 //    extract::Extension,
@@ -10,6 +11,7 @@ use flate2::read::ZlibDecoder;
 use futures::{channel::mpsc::Receiver as FReceiver, stream, StreamExt};
 use hyper::StatusCode;
 use indoc::indoc;
+use prost::Message;
 use rand::{thread_rng, Rng};
 //use serde::Serialize;
 //use serde_repr::{Deserialize_repr, Serialize_repr};
@@ -22,6 +24,7 @@ use super::DatadogMetricsConfig;
 use vector_core::event::{BatchNotifier, BatchStatus, Event, Metric, MetricKind, MetricValue};
 use reqwest::{Client, Method};
 use serde::Deserialize;
+use base64::prelude::{Engine as _, BASE64_STANDARD};
 
 
 use crate::{
@@ -34,6 +37,8 @@ use crate::{
     },
     topology::RunningTopology,
 };
+
+use crate::sources::datadog_agent::ddmetric_proto::MetricPayload;
 
 enum ApiStatus {
     OK,
@@ -235,7 +240,7 @@ fn fake_intake_vector_endpoint() -> String {
 }
 
 fn fake_intake_agent_endpoint() -> String {
-    std::env::var("FAKE_INTAKE_VECTOR_ENDPOINT")
+    std::env::var("FAKE_INTAKE_AGENT_ENDPOINT")
         .unwrap_or_else(|_| "http://127.0.0.1:8083".to_string())
 }
 
@@ -513,12 +518,21 @@ async fn start_vector() -> (
 
 #[derive(Deserialize, Debug)]
 struct Payloads {
-    payloads: Vec<u8>,
+    payloads: Vec<Payload>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize, Debug)]
+struct Payload {
+    data: String,
+    encoding: String,
+    timestamp: String,
 }
 
 async fn get_fakeintake_payloads(base: &str) -> Payloads {
 
-    let url = format!("{base}/fake/payloads/api/v2/series");
+    let url = format!("{base}/fakeintake/payloads?endpoint=/api/v2/series");
+
     Client::new()
         .request(Method::GET, &url)
         .send()
@@ -589,9 +603,36 @@ async fn foo() {
 
     //let vector_payloads = get_payloads_vector().await;
 
-    println!("{:?}", &agent_payloads.payloads);
-    //println!("{:?}", &vector_payloads);
+    let payloads = &agent_payloads.payloads;
 
-    //assert_eq!(agent_payloads.payloads, vector_payloads.payloads);
+    for payload in payloads {
 
+        println!("{{");
+        println!("    {:?}", &payload.timestamp);
+        println!();
+
+        //println!("{:?}", &payloads.encoding);
+        //println!();
+
+        //println!("raw payload: {:?}", &payloads[0].data);
+        //println!();
+
+        // decode base64
+        let payload = BASE64_STANDARD
+            .decode(&payload.data)
+            .expect("Invalid base64 data");
+
+        // decompress
+        let bytes = Bytes::from(decompress_payload(payload).unwrap());
+
+        let payload = MetricPayload::decode(bytes).unwrap();
+
+        for series in payload.series {
+            if series.metric.contains("foo_metric") {
+                println!("    {:?}", series);
+            }
+        }
+
+        println!("}}");
+    }
 }

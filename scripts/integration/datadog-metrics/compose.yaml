@@ -21,6 +21,13 @@ services:
     - DD_USE_DOGSTATSD=true
     - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
     - DD_HOSTNAME=datadog-agent
+    - DD_PROCESS_AGENT_ENABLED=false
+    - DD_APM_ENABLED=false
+    - DD_LOGS_ENABLED=false
+    - DD_CONTAINER_EXCLUDE="name:.*"
+    - DD_ENABLE_PAYLOADS_EVENTS=false
+    - DD_ENABLE_PAYLOADS_SERVICE_CHECKS=false
+    - DD_ENABLE_PAYLOADS_SKETCHES=false
   datadog-agent-vector:
     image: docker.io/datadog/agent:${CONFIG_VERSION}
     environment:
@@ -29,6 +36,14 @@ services:
     - DD_USE_DOGSTATSD=true
     - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
     - DD_HOSTNAME=datadog-agent-vector
+    - DD_PROCESS_AGENT_ENABLED=false
+    - DD_APM_ENABLED=false
+    - DD_LOGS_ENABLED=false
+    - DD_CONTAINER_EXCLUDE="name:.*"
+      # TODO is there a way to further restrict metrics to just custom metrics?
+    - DD_ENABLE_PAYLOADS_EVENTS=false
+    - DD_ENABLE_PAYLOADS_SERVICE_CHECKS=false
+    - DD_ENABLE_PAYLOADS_SKETCHES=false
   fakeintake-agent:
     image: docker.io/datadog/fakeintake:${CONFIG_VERSION}
   fakeintake-agent-vector:

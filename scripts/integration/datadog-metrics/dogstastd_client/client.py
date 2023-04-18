@@ -13,7 +13,6 @@ options = {
 
 initialize(**options)
 
-for _ in range(5):
-    statsd.increment('foo_metric', tags=['a_tag:1'])
+for _ in range(1000):
+    statsd.increment('foo_metric', tags=['a_tag:1'], 1.0)
     print("incremented metric")
-    time.sleep(1)
