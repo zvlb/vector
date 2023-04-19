@@ -39,6 +39,7 @@ use crate::{
 };
 
 use crate::sources::datadog_agent::ddmetric_proto::MetricPayload;
+//use crate::common::datadog::DatadogSeriesMetric;
 
 enum ApiStatus {
     OK,
@@ -244,74 +245,6 @@ fn fake_intake_agent_endpoint() -> String {
         .unwrap_or_else(|_| "http://127.0.0.1:8083".to_string())
 }
 
-// /// The port for the http server to receive data from the agent
-// fn server_port_for_agent() -> u16 {
-//     std::env::var("AGENT_PORT")
-//         .unwrap_or_else(|_| "8082".to_string())
-//         .parse::<u16>()
-//         .unwrap()
-// }
-
-/// The port for the http server to receive data from vector
-//const fn server_port_for_vector() -> u16 {
-//    1234
-//}
-
-// /// The agent url to post metrics to [Agent only]
-// fn agent_only_url() -> String {
-//     std::env::var("AGENT_URL").unwrap_or_else(|_| "http://127.0.0.1:8126/api/v2/series".to_owned())
-// }
-//
-// /// The agent url to post metrics to [Agent -> Vector].
-// fn agent_to_vector_url() -> String {
-//     std::env::var("AGENT_TO_VECTOR_URL")
-//         .unwrap_or_else(|_| "http://127.0.0.1:8126/api/v2/series".to_owned())
-// }
-
-//fn dogstastd_socket_agent_only() -> String {
-//    std::env::var("AGENT_ONLY_DOGSTASTD_SOCKET")
-//        .unwrap_or_else(|_| "tests/data/datadog/dd_dogstatsd_agent_only.socket".to_owned())
-//}
-//
-
-//fn dogstastd_socket_agent_vector() -> String {
-//    std::env::var("AGENT_VECTOR_DOGSTASTD_SOCKET")
-//        .unwrap_or_else(|_| "tests/data/datadogdd_dogstatsd_agent_vector.socket".to_owned())
-//}
-
-// /// Shared state for the HTTP server
-// struct AppState {
-//     tx: Sender<()>,
-// }
-//
-// /// Runs an HTTP server on the specified port.
-// async fn run_server(name: String, port: u16, tx: Sender<()>) {
-//     let state = Arc::new(AppState { tx });
-//     let app = Router::new()
-//         .route("/api/v1/validate", get(validate))
-//         .route("/api/v2/series", post(process_metrics))
-//         .layer(Extension(state));
-//
-//     let addr = SocketAddr::from(([0, 0, 0, 0], port));
-//
-//     println!("HTTP server for `{}` listening on {}", name, addr);
-//
-//     axum::Server::bind(&addr)
-//         .serve(app.into_make_service())
-//         .await
-//         .unwrap();
-// }
-//
-// // Needed for the sink healthcheck
-// async fn validate() -> &'static str {
-//     ""
-// }
-//
-// async fn process_metrics(Extension(state): Extension<Arc<AppState>>, request: Request<Body>) {
-//     println!("got metrics: {:?}", request);
-//     state.tx.send(()).await.unwrap();
-// }
-
 async fn start_vector() -> (
     RunningTopology,
     (mpsc::UnboundedSender<()>, mpsc::UnboundedReceiver<()>),
@@ -357,165 +290,6 @@ async fn start_vector() -> (
     (topology, shutdown)
 }
 
-// #[derive(Serialize)]
-// struct ApiMetric {
-//     series: Vec<Series>,
-// }
-//
-// #[derive(Serialize)]
-// struct Series {
-//     interval: Option<i64>,
-//     metadata: Option<Metadata>,
-//     metric: String,
-//     points: Vec<Point>,
-//     resources: Option<Vec<Resources>>,
-//     source_type_name: Option<String>,
-//     tags: Option<Vec<String>>,
-//     r#type: MetricType,
-//     unit: Option<String>,
-// }
-//
-// #[derive(Serialize)]
-// struct Metadata {
-//     origin: Origin,
-// }
-//
-// #[derive(Serialize)]
-// struct Origin {
-//     metric_type: i32,
-//     product: i32,
-//     service: i32,
-// }
-//
-// #[derive(Serialize)]
-// struct Point {
-//     timestamp: i64,
-//     value: f64,
-// }
-//
-// #[derive(Serialize)]
-// struct Resources {
-//     name: String,
-//     r#type: String,
-// }
-//
-// #[derive(Serialize_repr, Deserialize_repr, PartialEq, Debug)]
-// #[repr(u8)]
-// enum MetricType {
-//     Unspecified = 0,
-//     Count = 1,
-//     Rate = 2,
-//     Gauge = 3,
-// }
-
-// sends a metric to each of the urls
-//async fn send_metric(urls: &Vec<String>, payload: ApiMetric) {
-//    let client = reqwest::Client::new();
-//
-//    let api_key = std::env::var("TEST_DATADOG_API_KEY")
-//        .expect("couldn't find the Datadog api key in environment variables");
-//
-//    for url in urls {
-//        let res = client
-//            .post(url)
-//            .header(ACCEPT, "application/json")
-//            .header(CONTENT_TYPE, "application/json")
-//            .header("DD-API-KEY", api_key.clone())
-//            .json(&payload)
-//            .send()
-//            .await;
-//
-//        match res {
-//            Ok(response) => {
-//                if response.status() != hyper::StatusCode::OK {
-//                    panic!(
-//                        "Error submitting metrics to the Agent at {} : {:?}",
-//                        url, response
-//                    );
-//                }
-//                info!("Sent a metric to the Agent at {}.", url);
-//            }
-//            Err(e) => {
-//                panic!("Error submitting metrics to the Agent at {} : {:?}", url, e);
-//            }
-//        }
-//    }
-//}
-//
-//async fn send_count_to_agents(urls: &Vec<String>) {
-//    let count = ApiMetric {
-//        series: vec![Series {
-//            interval: None,
-//            metadata: None,
-//            metric: "foo_count".to_owned(),
-//            points: vec![],
-//            resources: None,
-//            source_type_name: None,
-//            tags: None,
-//            r#type: MetricType::Count,
-//            unit: None,
-//        }],
-//    };
-//
-//    send_metric(urls, count).await
-//}
-
-//async fn send_count_to_agents(paths: &Vec<String>) {
-//    paths
-//        .iter()
-//        .map(|path| {
-//            std::process::Command::new("sh")
-//                .arg("-C")
-//                .arg("tests/data/datadog/send_count_metrics.sh")
-//                .arg(&path)
-//                .spawn()
-//                .expect("sh command failed to start")
-//        })
-//        .next();
-//}
-
-//async fn receive_the_stats(
-//    rx_agent_only: &mut Receiver<()>,
-//    rx_agent_vector: &mut Receiver<()>,
-//) -> ((), ()) {
-//    let timeout = sleep(Duration::from_secs(60));
-//    tokio::pin!(timeout);
-//
-//    let mut stats_agent_vector = None;
-//    let mut stats_agent_only = None;
-//
-//    // wait on the receive of stats payloads. expect one from agent, two from vector.
-//    // The second payload from vector should be the aggregate.
-//    loop {
-//        tokio::select! {
-//            d1 = rx_agent_vector.recv() => {
-//                stats_agent_vector = d1;
-//                if stats_agent_only.is_some() && stats_agent_vector.is_some() {
-//                    break;
-//                }
-//            },
-//            d2 = rx_agent_only.recv() => {
-//                stats_agent_only = d2;
-//                if stats_agent_vector.is_some() && stats_agent_only.is_some() {
-//                    break;
-//                }
-//            },
-//            _ = &mut timeout => break,
-//        }
-//    }
-//
-//    assert!(
-//        stats_agent_vector.is_some(),
-//        "received no payloads from vector"
-//    );
-//    assert!(
-//        stats_agent_only.is_some(),
-//        "received no payloads from agent"
-//    );
-//
-//    (stats_agent_only.unwrap(), stats_agent_vector.unwrap())
-//}
-
 #[derive(Deserialize, Debug)]
 struct Payloads {
     payloads: Vec<Payload>,
@@ -529,12 +303,10 @@ struct Payload {
     timestamp: String,
 }
 
-async fn get_fakeintake_payloads(base: &str) -> Payloads {
-
-    let url = format!("{base}/fakeintake/payloads?endpoint=/api/v2/series");
+async fn get_fakeintake_payloads(url: &str) -> Payloads {
 
     Client::new()
-        .request(Method::GET, &url)
+        .request(Method::GET, url)
         .send()
         .await
         .unwrap_or_else(|_| panic!("Sending GET request to {} failed", url))
@@ -544,77 +316,28 @@ async fn get_fakeintake_payloads(base: &str) -> Payloads {
 }
 
 async fn get_payloads_agent() -> Payloads {
-    get_fakeintake_payloads(&fake_intake_agent_endpoint()).await
+    let url = format!("{}/fakeintake/payloads?endpoint=/api/v2/series", fake_intake_agent_endpoint());
+    get_fakeintake_payloads(&url).await
 }
 
-async fn _get_payloads_vector() -> Payloads {
-    get_fakeintake_payloads(&fake_intake_vector_endpoint()).await
+async fn get_payloads_vector() -> Payloads {
+    let url = format!("{}/fakeintake/payloads?endpoint=/api/v1/series", fake_intake_vector_endpoint());
+    get_fakeintake_payloads(&url).await
 }
 
-#[tokio::test]
-async fn foo() {
-    trace_init();
-
-    // channels for the servers to send us back data on
-    //let (tx_agent_vector, mut rx_agent_vector) = mpsc::channel(32);
-    //let (tx_agent_only, mut rx_agent_only) = mpsc::channel(32);
-
-    // spawn the servers
-    //{
-    //    // [vector -> the server]
-    //    tokio::spawn(async move {
-    //        run_server(
-    //            "vector".to_string(),
-    //            server_port_for_vector(),
-    //            tx_agent_vector,
-    //        )
-    //        .await;
-    //    });
-
-    //    // [agent -> the server]
-    //    tokio::spawn(async move {
-    //        run_server("agent".to_string(), server_port_for_agent(), tx_agent_only).await;
-    //    });
-    //}
-
-    // allow the Agent containers to start up
-    //sleep(Duration::from_secs(15)).await;
-
-    // starts the vector source and sink
-    // panics if vector errors during startup
-    let (_topology, _shutdown) = start_vector().await;
-
-    // the URLs of the Agent metrics endpoints that metrics will be sent to
-    //let sockets = vec![
-    //    dogstastd_socket_agent_only(),
-    //    dogstastd_socket_agent_vector(),
-    //];
-
-    // send the metrics through the agent containers and panic if any of the HTTP posts fail.
-    //send_count_to_agents(&sockets).await;
-
-    // receive the stats on the channel receivers from the servers
-    //let (_stats_agent, _stats_vector) =
-    //    receive_the_stats(&mut rx_agent_only, &mut rx_agent_vector).await;
-
-    sleep(Duration::from_secs(10)).await;
-
-    let agent_payloads = get_payloads_agent().await;
-
-    //let vector_payloads = get_payloads_vector().await;
-
-    let payloads = &agent_payloads.payloads;
+fn print_payloads_agent(payloads: &Vec<Payload>) {
+    println!("received {} payloads", payloads.len());
 
     for payload in payloads {
 
         println!("{{");
-        println!("    {:?}", &payload.timestamp);
-        println!();
-
-        //println!("{:?}", &payloads.encoding);
+        //println!("    {:?}", &payload.timestamp);
         //println!();
 
-        //println!("raw payload: {:?}", &payloads[0].data);
+        //println!("{:?}", &payload.encoding);
+        //println!();
+
+        //println!("raw payload: {:?}", &payload.data);
         //println!();
 
         // decode base64
@@ -635,4 +358,71 @@ async fn foo() {
 
         println!("}}");
     }
+}
+
+fn print_payloads_vector(payloads: &Vec<Payload>) {
+    println!("received {} payloads", payloads.len());
+
+    for payload in payloads {
+
+        println!("{{");
+        //println!("    {:?}", &payload.timestamp);
+        //println!();
+
+        //println!("{:?}", &payload.encoding);
+        //println!();
+
+        //println!("raw payload: {:?}", &payload.data);
+        //println!();
+
+        // decode base64
+        let payload = BASE64_STANDARD
+            .decode(&payload.data)
+            .expect("Invalid base64 data");
+
+        let payload = decompress_payload(payload).unwrap();
+        let payload = std::str::from_utf8(&payload).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(payload).unwrap();
+
+        //println!("decoded, decompressed payload: {:?}", &payload);
+        //println!();
+
+        let series = payload
+            .as_object()
+            .unwrap()
+            .get("series")
+            .unwrap()
+            .as_array()
+            .unwrap();
+
+        for serie in series {
+            let metric = serie.get("metric").unwrap().as_str().unwrap();
+            if metric == "foo_metric" {
+                println!("    {:?}", serie);
+            }
+        }
+
+        println!("}}");
+    }
+}
+
+#[tokio::test]
+async fn foo() {
+    trace_init();
+
+    // starts the vector source and sink
+    // panics if vector errors during startup
+    let (_topology, _shutdown) = start_vector().await;
+
+    sleep(Duration::from_secs(25)).await;
+
+    let agent_payloads = get_payloads_agent().await;
+    println!("AGENT PAYLOADS");
+    println!();
+    print_payloads_agent(&agent_payloads.payloads);
+
+    let vector_payloads = get_payloads_vector().await;
+    println!("VECTOR PAYLOADS");
+    println!();
+    print_payloads_vector(&vector_payloads.payloads);
 }

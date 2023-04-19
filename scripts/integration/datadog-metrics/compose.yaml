@@ -29,10 +29,10 @@ services:
     - DD_ENABLE_PAYLOADS_SERVICE_CHECKS=false
     - DD_ENABLE_PAYLOADS_SKETCHES=false
   datadog-agent-vector:
-    image: docker.io/datadog/agent:${CONFIG_VERSION}
+    image: datadog-agent-vector-t1:latest
     environment:
     - DD_API_KEY=${TEST_DATADOG_API_KEY:?TEST_DATADOG_API_KEY required}
-    - DD_DD_URL=http://runner:8081
+      #- DD_DD_URL=http://runner:8081
     - DD_USE_DOGSTATSD=true
     - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
     - DD_HOSTNAME=datadog-agent-vector
