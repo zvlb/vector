@@ -1,11 +1,3 @@
-
-//use axum::{
-//    body::Body,
-//    extract::Extension,
-//    http::Request,
-//    routing::{get, post},
-//    Router,
-//};
 use bytes::Bytes;
 use flate2::read::ZlibDecoder;
 use futures::{channel::mpsc::Receiver as FReceiver, stream, StreamExt};
@@ -13,10 +5,7 @@ use hyper::StatusCode;
 use indoc::indoc;
 use prost::Message;
 use rand::{thread_rng, Rng};
-//use serde::Serialize;
-//use serde_repr::{Deserialize_repr, Serialize_repr};
-//use std::{net::SocketAddr, sync::Arc};
-//use tokio::sync::mpsc::{self, Receiver, Sender};
+
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
 
@@ -26,7 +15,7 @@ use reqwest::{Client, Method};
 use serde::Deserialize;
 use base64::prelude::{Engine as _, BASE64_STANDARD};
 
-
+use crate::common::datadog::{DatadogSeriesMetric, DatadogMetricType, DatadogPoint};
 use crate::{
     config::{ConfigBuilder, SinkConfig},
     sinks::util::test::{build_test_server_status, load_sink},
@@ -38,8 +27,7 @@ use crate::{
     topology::RunningTopology,
 };
 
-use crate::sources::datadog_agent::ddmetric_proto::MetricPayload;
-//use crate::common::datadog::DatadogSeriesMetric;
+use crate::sources::datadog_agent::ddmetric_proto::{MetricPayload, metric_payload::{MetricSeries, MetricType}};
 
 enum ApiStatus {
     OK,
@@ -325,7 +313,132 @@ async fn get_payloads_vector() -> Payloads {
     get_fakeintake_payloads(&url).await
 }
 
-fn print_payloads_agent(payloads: &Vec<Payload>) {
+impl From<&MetricSeries> for DatadogSeriesMetric {
+    fn from(other_series: &MetricSeries) -> DatadogSeriesMetric {
+        let interval = if other_series.interval > 0 {
+            Some(other_series.interval as u32)
+        } else {
+            None
+        };
+
+        let tags = if other_series.tags.is_empty() {
+            None
+        } else {
+            Some(other_series.tags.clone())
+        };
+
+        let host_resource = other_series.resources.iter().find(| resource| {
+            resource.r#type == "host" });
+        let host = host_resource.map(|resource| resource.name.clone());
+
+        let source_type_name = if other_series.source_type_name.is_empty() {
+            None
+        } else {
+            Some(other_series.source_type_name.clone())
+        };
+
+        let mut points = vec![];
+
+        for point in &other_series.points {
+            points.push(DatadogPoint(point.timestamp, point.value));
+        }
+
+        DatadogSeriesMetric {
+            metric: other_series.metric.clone(),
+            r#type: other_series.r#type().into(),
+            interval,
+            points,
+            tags,
+            host,
+            source_type_name,
+            device: None,
+        }
+    }
+}
+
+impl From<MetricType> for DatadogMetricType {
+    fn from(other: MetricType) -> DatadogMetricType {
+        match other {
+            MetricType::Unspecified => panic!("unspecified metric type detected"),
+            MetricType::Count => DatadogMetricType::Count,
+            MetricType::Rate => DatadogMetricType::Rate,
+            MetricType::Gauge => DatadogMetricType::Gauge,
+        }
+    }
+}
+
+fn unpack_payloads_agent_v2(in_payloads: &Vec<Payload>) -> Vec<MetricPayload> {
+
+    let mut out_payloads = vec![];
+
+    in_payloads.iter().for_each(|payload| {
+        // decode base64
+        let payload = BASE64_STANDARD
+            .decode(&payload.data)
+            .expect("Invalid base64 data");
+
+        // decompress
+        let bytes = Bytes::from(decompress_payload(payload).unwrap());
+
+        let payload = MetricPayload::decode(bytes).unwrap();
+
+        out_payloads.push(payload);
+    });
+
+    out_payloads
+}
+
+fn convert_v2_metric_payloads_v1(in_payload: &Vec<MetricPayload>) -> Vec<DatadogSeriesMetric> {
+
+    let mut out_series = vec![];
+
+    in_payload.iter().for_each(|payload| {
+        payload.series.iter().for_each(|serie| {
+            out_series.push(serie.into());
+        });
+    });
+
+    out_series
+}
+
+
+fn unpack_vector_series(in_payloads: &Vec<Payload>) -> Vec<DatadogSeriesMetric> {
+
+    let mut out_series = vec![];
+
+    in_payloads.iter().for_each(|payload| {
+
+        // decode base64
+        let payload = BASE64_STANDARD
+            .decode(&payload.data)
+            .expect("Invalid base64 data");
+
+        let payload = decompress_payload(payload).unwrap();
+        let payload = std::str::from_utf8(&payload).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(payload).unwrap();
+
+        //println!("decoded, decompressed payload: {:?}", &payload);
+        //println!();
+
+        let series = payload
+            .as_object()
+            .unwrap()
+            .get("series")
+            .unwrap()
+            .as_array()
+            .unwrap();
+
+        series.iter().for_each(|serie| {
+            let ser: DatadogSeriesMetric = serde_json::from_value(serie.clone()).unwrap();
+            out_series.push(ser);
+        });
+
+    });
+
+    out_series
+}
+
+fn _print_payloads_agent(payloads: &Vec<Payload>) {
     println!("received {} payloads", payloads.len());
 
     for payload in payloads {
@@ -360,69 +473,42 @@ fn print_payloads_agent(payloads: &Vec<Payload>) {
     }
 }
 
-fn print_payloads_vector(payloads: &Vec<Payload>) {
-    println!("received {} payloads", payloads.len());
-
-    for payload in payloads {
-
-        println!("{{");
-        //println!("    {:?}", &payload.timestamp);
-        //println!();
-
-        //println!("{:?}", &payload.encoding);
-        //println!();
-
-        //println!("raw payload: {:?}", &payload.data);
-        //println!();
-
-        // decode base64
-        let payload = BASE64_STANDARD
-            .decode(&payload.data)
-            .expect("Invalid base64 data");
-
-        let payload = decompress_payload(payload).unwrap();
-        let payload = std::str::from_utf8(&payload).unwrap();
-        let payload: serde_json::Value = serde_json::from_str(payload).unwrap();
-
-        //println!("decoded, decompressed payload: {:?}", &payload);
-        //println!();
-
-        let series = payload
-            .as_object()
-            .unwrap()
-            .get("series")
-            .unwrap()
-            .as_array()
-            .unwrap();
-
-        for serie in series {
-            let metric = serie.get("metric").unwrap().as_str().unwrap();
-            if metric == "foo_metric" {
-                println!("    {:?}", serie);
-            }
+fn print_series(series: &Vec<DatadogSeriesMetric>) {
+    for serie in series {
+        if serie.metric == "foo_metric" {
+            println!("    {:?}", serie);
         }
-
-        println!("}}");
     }
 }
 
 #[tokio::test]
-async fn foo() {
+async fn poc_e2e_metrics() {
     trace_init();
 
     // starts the vector source and sink
     // panics if vector errors during startup
     let (_topology, _shutdown) = start_vector().await;
 
-    sleep(Duration::from_secs(25)).await;
+    // TODO there hopefully is a way to configure the flushing of metrics such that we don't have
+    // to wait statically for so long here.
+    sleep(Duration::from_secs(60)).await;
+
+    // this is kind of ugly but, because the Agent is sending out v2 (protobuf) payloads, and
+    // vector sends out v1 (JSON) payloads, we have to convert the Agent protobuf payloads to v1,
+    // in order to have a proper validation.
 
     let agent_payloads = get_payloads_agent().await;
-    println!("AGENT PAYLOADS");
+    let unpacked_agent_payloads = unpack_payloads_agent_v2(&agent_payloads.payloads);
+    let v1_agent_series = convert_v2_metric_payloads_v1(&unpacked_agent_payloads);
+
+    println!("AGENT METRICS");
     println!();
-    print_payloads_agent(&agent_payloads.payloads);
+    print_series(&v1_agent_series);
 
     let vector_payloads = get_payloads_vector().await;
-    println!("VECTOR PAYLOADS");
+    let v1_vector_series = unpack_vector_series(&vector_payloads.payloads);
+
+    println!("VECTOR METRICS");
     println!();
-    print_payloads_vector(&vector_payloads.payloads);
+    print_series(&v1_vector_series);
 }
