@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use bytes::Bytes;
 use flate2::read::ZlibDecoder;
-use futures::{channel::mpsc::Receiver as FReceiver, stream, StreamExt};
+use futures::{channel::mpsc::Receiver, stream, StreamExt};
 use hyper::StatusCode;
 use indoc::indoc;
 use prost::Message;
@@ -21,15 +21,15 @@ use crate::common::datadog::{DatadogSeriesMetric, DatadogMetricType, DatadogPoin
 use crate::{
     config::{ConfigBuilder, SinkConfig},
     sinks::util::test::{build_test_server_status, load_sink},
-    sources::datadog_agent::DatadogAgentConfig,
+    sources::datadog_agent::{DatadogAgentConfig,
+        ddmetric_proto::{MetricPayload, metric_payload::{MetricSeries, MetricType}}
+    },
     test_util::{
         components::{assert_sink_compliance, SINK_TAGS},
         map_event_batch_stream, next_addr, start_topology, trace_init,
     },
     topology::RunningTopology,
 };
-
-use crate::sources::datadog_agent::ddmetric_proto::{MetricPayload, metric_payload::{MetricSeries, MetricType}};
 
 enum ApiStatus {
     OK,
@@ -40,7 +40,7 @@ fn test_server(
     addr: std::net::SocketAddr,
     api_status: ApiStatus,
 ) -> (
-    FReceiver<(http::request::Parts, Bytes)>,
+    Receiver<(http::request::Parts, Bytes)>,
     stream_cancel::Trigger,
     impl std::future::Future<Output = Result<(), ()>>,
 ) {
@@ -67,7 +67,7 @@ fn test_server(
 async fn start_test(
     api_status: ApiStatus,
     batch_status: BatchStatus,
-) -> (Vec<Event>, FReceiver<(http::request::Parts, Bytes)>) {
+) -> (Vec<Event>, Receiver<(http::request::Parts, Bytes)>) {
     let config = indoc! {r#"
         default_api_key = "atoken"
         default_namespace = "foo"
@@ -216,6 +216,11 @@ async fn real_endpoint() {
     .await;
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//    e2e Agent -> Vector POC
+//    Temporary location in the code. Ideally I think this would be located in somewhere like lib/
+//    , since the same framework would be utilized to test the datadog_agent source and all of the
+//    datadog sinks.
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 fn vector_receive_port() -> u16 {
