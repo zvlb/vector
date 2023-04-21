@@ -13,6 +13,13 @@ options = {
 
 initialize(**options)
 
-for _ in range(1000):
-    statsd.increment('foo_metric', tags=['a_tag:1'], 1.0)
+time.sleep(5)
+
+for i in range(10):
+    statsd.increment('foo_metric.rate', tags=['a_tag:1'])
     print("incremented metric")
+
+    statsd.gauge('foo_metric.gauge', i, tags=["a_tag:2"])
+
+    statsd.flush()
+    time.sleep(1)

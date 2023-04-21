@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use bytes::Bytes;
 use flate2::read::ZlibDecoder;
 use futures::{channel::mpsc::Receiver as FReceiver, stream, StreamExt};
@@ -254,17 +256,11 @@ async fn start_vector() -> (
     let dd_metrics_endpoint =  fake_intake_vector_endpoint();
     let cfg = format!(
         indoc! { r#"
-            default_api_key = "atoken"
+            default_api_key = "unused"
             endpoint = "{}"
         "#},
         dd_metrics_endpoint
     );
-
-    // TODO I don't think we actually need this API key to be set since we're not exporting to DD.
-    let api_key = std::env::var("TEST_DATADOG_API_KEY")
-        .expect("couldn't find the Datadog api key in environment variables");
-    assert!(!api_key.is_empty(), "TEST_DATADOG_API_KEY required");
-    let cfg = cfg.replace("atoken", &api_key);
 
     let sink_config = toml::from_str::<DatadogMetricsConfig>(&cfg).unwrap();
 
@@ -278,6 +274,7 @@ async fn start_vector() -> (
     (topology, shutdown)
 }
 
+// Fakeintake response
 #[derive(Deserialize, Debug)]
 struct Payloads {
     payloads: Vec<Payload>,
@@ -286,6 +283,7 @@ struct Payloads {
 #[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 struct Payload {
+    // base64 encoded
     data: String,
     encoding: String,
     timestamp: String,
@@ -315,11 +313,11 @@ async fn get_payloads_vector() -> Payloads {
 
 impl From<&MetricSeries> for DatadogSeriesMetric {
     fn from(other_series: &MetricSeries) -> DatadogSeriesMetric {
-        let interval = if other_series.interval > 0 {
-            Some(other_series.interval as u32)
-        } else {
-            None
-        };
+
+        let interval = other_series.interval
+            .is_positive()
+            .then_some(other_series.interval as u32)
+            .or(None);
 
         let tags = if other_series.tags.is_empty() {
             None
@@ -438,47 +436,69 @@ fn unpack_vector_series(in_payloads: &Vec<Payload>) -> Vec<DatadogSeriesMetric> 
     out_series
 }
 
-fn _print_payloads_agent(payloads: &Vec<Payload>) {
-    println!("received {} payloads", payloads.len());
-
-    for payload in payloads {
-
-        println!("{{");
-        //println!("    {:?}", &payload.timestamp);
-        //println!();
-
-        //println!("{:?}", &payload.encoding);
-        //println!();
-
-        //println!("raw payload: {:?}", &payload.data);
-        //println!();
-
-        // decode base64
-        let payload = BASE64_STANDARD
-            .decode(&payload.data)
-            .expect("Invalid base64 data");
-
-        // decompress
-        let bytes = Bytes::from(decompress_payload(payload).unwrap());
-
-        let payload = MetricPayload::decode(bytes).unwrap();
-
-        for series in payload.series {
-            if series.metric.contains("foo_metric") {
-                println!("    {:?}", series);
-            }
-        }
-
-        println!("}}");
-    }
-}
-
+// For debugging
 fn print_series(series: &Vec<DatadogSeriesMetric>) {
     for serie in series {
-        if serie.metric == "foo_metric" {
+        if serie.metric.contains("foo_metric") {
             println!("    {:?}", serie);
         }
     }
+}
+
+// NOTE: there are probably more eloquent ways to handle this but it works for a POC
+// Sums up the metrics in each series by name.
+fn aggregate_series_metrics(series: &Vec<DatadogSeriesMetric>) -> HashMap<String,(i64, f64)> {
+    let mut aggregate = HashMap::new();
+    for serie in series {
+        let interval = serie.interval.unwrap_or(1) as f64;
+        match serie.r#type {
+            DatadogMetricType::Gauge => {
+                // last one wins
+                if let Some(point) = serie.points.last() {
+                    if let Some((t, v)) = aggregate.get_mut(&serie.metric) {
+                        if point.0 > *t {
+                            *t = point.0;
+                            *v = point.1;
+                        }
+                    } else  {
+                        aggregate.insert(serie.metric.clone(), (point.0, point.1));
+                    }
+                }
+            }
+            DatadogMetricType::Count => {
+                if let Some((t, v)) = aggregate.get_mut(&serie.metric) {
+                    for point in &serie.points {
+                        *v += point.1;
+                        *t = point.0;
+                    }
+                } else {
+                    for point in &serie.points {
+                        aggregate.insert(serie.metric.clone(), (point.0, point.1));
+                    }
+                }
+            }
+            DatadogMetricType::Rate => {
+                if let Some((t, v)) = aggregate.get_mut(&serie.metric) {
+                    for point in &serie.points {
+                        *v += point.1 * interval;
+                        *t = point.0;
+                    }
+                } else {
+                    for (idx, point) in serie.points.iter().enumerate() {
+                        if idx == 0 {
+                            aggregate.insert(serie.metric.clone(), (point.0, point.1 * interval));
+                        } else {
+                            if let Some((t, v)) = aggregate.get_mut(&serie.metric) {
+                                *v += point.1 * interval;
+                                *t = point.0;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    aggregate
 }
 
 #[tokio::test]
@@ -491,19 +511,30 @@ async fn poc_e2e_metrics() {
 
     // TODO there hopefully is a way to configure the flushing of metrics such that we don't have
     // to wait statically for so long here.
-    sleep(Duration::from_secs(60)).await;
+    sleep(Duration::from_secs(25)).await;
+
+    let agent_payloads = get_payloads_agent().await;
+    let unpacked_agent_payloads = unpack_payloads_agent_v2(&agent_payloads.payloads);
 
     // this is kind of ugly but, because the Agent is sending out v2 (protobuf) payloads, and
     // vector sends out v1 (JSON) payloads, we have to convert the Agent protobuf payloads to v1,
     // in order to have a proper validation.
-
-    let agent_payloads = get_payloads_agent().await;
-    let unpacked_agent_payloads = unpack_payloads_agent_v2(&agent_payloads.payloads);
     let v1_agent_series = convert_v2_metric_payloads_v1(&unpacked_agent_payloads);
 
     println!("AGENT METRICS");
     println!();
     print_series(&v1_agent_series);
+    println!();
+
+    let agent_aggregate = aggregate_series_metrics(&v1_agent_series);
+    let foo_rate_agent = agent_aggregate.get("foo_metric.rate");
+    println!("AGENT RATE AGGREGATE: {:?}", foo_rate_agent);
+
+    let foo_gauge_agent = agent_aggregate.get("foo_metric.gauge");
+    println!("AGENT GAUGE AGGREGATE: {:?}", foo_gauge_agent);
+
+    assert!(foo_rate_agent.is_some());
+    assert!(foo_gauge_agent.is_some());
 
     let vector_payloads = get_payloads_vector().await;
     let v1_vector_series = unpack_vector_series(&vector_payloads.payloads);
@@ -511,4 +542,18 @@ async fn poc_e2e_metrics() {
     println!("VECTOR METRICS");
     println!();
     print_series(&v1_vector_series);
+    println!();
+
+    let vector_aggregate = aggregate_series_metrics(&v1_vector_series);
+    let foo_rate_vector = vector_aggregate.get("foo_metric.rate");
+    println!("VECTOR RATE AGGREGATE: {:?}", foo_rate_vector);
+
+    assert!(foo_rate_vector.is_some());
+
+    let foo_gauge_vector = vector_aggregate.get("foo_metric.gauge");
+    println!("AGENT GAUGE AGGREGATE: {:?}", foo_gauge_vector);
+
+    assert_eq!(foo_rate_agent.unwrap().1, foo_rate_vector.unwrap().1);
+
+    assert_eq!(foo_gauge_agent.unwrap().1, foo_gauge_vector.unwrap().1);
 }
