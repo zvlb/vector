@@ -12,17 +12,21 @@ use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
 
 use super::DatadogMetricsConfig;
-use vector_core::event::{BatchNotifier, BatchStatus, Event, Metric, MetricKind, MetricValue};
+use base64::prelude::{Engine as _, BASE64_STANDARD};
 use reqwest::{Client, Method};
 use serde::Deserialize;
-use base64::prelude::{Engine as _, BASE64_STANDARD};
+use vector_core::event::{BatchNotifier, BatchStatus, Event, Metric, MetricKind, MetricValue};
 
-use crate::common::datadog::{DatadogSeriesMetric, DatadogMetricType, DatadogPoint};
+use crate::common::datadog::{DatadogMetricType, DatadogPoint, DatadogSeriesMetric};
 use crate::{
     config::{ConfigBuilder, SinkConfig},
     sinks::util::test::{build_test_server_status, load_sink},
-    sources::datadog_agent::{DatadogAgentConfig,
-        ddmetric_proto::{MetricPayload, metric_payload::{MetricSeries, MetricType}}
+    sources::datadog_agent::{
+        ddmetric_proto::{
+            metric_payload::{MetricSeries, MetricType},
+            MetricPayload,
+        },
+        DatadogAgentConfig,
     },
     test_util::{
         components::{assert_sink_compliance, SINK_TAGS},
@@ -258,7 +262,7 @@ async fn start_vector() -> (
     let mut builder = ConfigBuilder::default();
     builder.add_source("in", source_config);
 
-    let dd_metrics_endpoint =  fake_intake_vector_endpoint();
+    let dd_metrics_endpoint = fake_intake_vector_endpoint();
     let cfg = format!(
         indoc! { r#"
             default_api_key = "unused"
@@ -295,7 +299,6 @@ struct Payload {
 }
 
 async fn get_fakeintake_payloads(url: &str) -> Payloads {
-
     Client::new()
         .request(Method::GET, url)
         .send()
@@ -307,19 +310,25 @@ async fn get_fakeintake_payloads(url: &str) -> Payloads {
 }
 
 async fn get_payloads_agent() -> Payloads {
-    let url = format!("{}/fakeintake/payloads?endpoint=/api/v2/series", fake_intake_agent_endpoint());
+    let url = format!(
+        "{}/fakeintake/payloads?endpoint=/api/v2/series",
+        fake_intake_agent_endpoint()
+    );
     get_fakeintake_payloads(&url).await
 }
 
 async fn get_payloads_vector() -> Payloads {
-    let url = format!("{}/fakeintake/payloads?endpoint=/api/v1/series", fake_intake_vector_endpoint());
+    let url = format!(
+        "{}/fakeintake/payloads?endpoint=/api/v1/series",
+        fake_intake_vector_endpoint()
+    );
     get_fakeintake_payloads(&url).await
 }
 
 impl From<&MetricSeries> for DatadogSeriesMetric {
     fn from(other_series: &MetricSeries) -> DatadogSeriesMetric {
-
-        let interval = other_series.interval
+        let interval = other_series
+            .interval
             .is_positive()
             .then_some(other_series.interval as u32)
             .or(None);
@@ -330,8 +339,10 @@ impl From<&MetricSeries> for DatadogSeriesMetric {
             Some(other_series.tags.clone())
         };
 
-        let host_resource = other_series.resources.iter().find(| resource| {
-            resource.r#type == "host" });
+        let host_resource = other_series
+            .resources
+            .iter()
+            .find(|resource| resource.r#type == "host");
         let host = host_resource.map(|resource| resource.name.clone());
 
         let source_type_name = if other_series.source_type_name.is_empty() {
@@ -371,7 +382,6 @@ impl From<MetricType> for DatadogMetricType {
 }
 
 fn unpack_payloads_agent_v2(in_payloads: &Vec<Payload>) -> Vec<MetricPayload> {
-
     let mut out_payloads = vec![];
 
     in_payloads.iter().for_each(|payload| {
@@ -392,7 +402,6 @@ fn unpack_payloads_agent_v2(in_payloads: &Vec<Payload>) -> Vec<MetricPayload> {
 }
 
 fn convert_v2_metric_payloads_v1(in_payload: &Vec<MetricPayload>) -> Vec<DatadogSeriesMetric> {
-
     let mut out_series = vec![];
 
     in_payload.iter().for_each(|payload| {
@@ -404,13 +413,10 @@ fn convert_v2_metric_payloads_v1(in_payload: &Vec<MetricPayload>) -> Vec<Datadog
     out_series
 }
 
-
 fn unpack_vector_series(in_payloads: &Vec<Payload>) -> Vec<DatadogSeriesMetric> {
-
     let mut out_series = vec![];
 
     in_payloads.iter().for_each(|payload| {
-
         // decode base64
         let payload = BASE64_STANDARD
             .decode(&payload.data)
@@ -435,7 +441,6 @@ fn unpack_vector_series(in_payloads: &Vec<Payload>) -> Vec<DatadogSeriesMetric> 
             let ser: DatadogSeriesMetric = serde_json::from_value(serie.clone()).unwrap();
             out_series.push(ser);
         });
-
     });
 
     out_series
@@ -452,7 +457,7 @@ fn print_series(series: &Vec<DatadogSeriesMetric>) {
 
 // NOTE: there are probably more eloquent ways to handle this but it works for a POC
 // Sums up the metrics in each series by name.
-fn aggregate_series_metrics(series: &Vec<DatadogSeriesMetric>) -> HashMap<String,(i64, f64)> {
+fn aggregate_series_metrics(series: &Vec<DatadogSeriesMetric>) -> HashMap<String, (i64, f64)> {
     let mut aggregate = HashMap::new();
     for serie in series {
         let interval = serie.interval.unwrap_or(1) as f64;
@@ -465,7 +470,7 @@ fn aggregate_series_metrics(series: &Vec<DatadogSeriesMetric>) -> HashMap<String
                             *t = point.0;
                             *v = point.1;
                         }
-                    } else  {
+                    } else {
                         aggregate.insert(serie.metric.clone(), (point.0, point.1));
                     }
                 }
