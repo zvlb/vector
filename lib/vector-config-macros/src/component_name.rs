@@ -1,7 +1,7 @@
 use darling::util::path_to_string;
 use proc_macro::TokenStream;
 
-use quote::quote;
+use quote::{quote, ToTokens};
 use syn::{parse_macro_input, spanned::Spanned, Attribute, DeriveInput, Error, LitStr};
 
 use crate::attrs::{self, path_matches};
@@ -106,7 +106,7 @@ pub fn derive_component_name_impl(input: TokenStream) -> TokenStream {
 fn attr_to_component_name(attr: &Attribute) -> Result<Option<String>, Error> {
     // First, filter out anything that isn't ours.
     if !path_matches(
-        &attr.path,
+        &attr.path(),
         &[
             attrs::ENRICHMENT_TABLE_COMPONENT,
             attrs::PROVIDER_COMPONENT,
@@ -121,14 +121,14 @@ fn attr_to_component_name(attr: &Attribute) -> Result<Option<String>, Error> {
 
     // Reconstruct the original attribute path (i.e. `source`) from our marker version of it (i.e.
     // `source_component`), so that any error message we emit is contextually relevant.
-    let path_str = path_to_string(&attr.path);
+    let path_str = path_to_string(&attr.path());
     let component_type_attr = path_str.replace("_component", "");
     let component_type = component_type_attr.replace('_', " ");
 
     // Make sure the attribute actually has inner tokens. If it doesn't, this means they forgot
     // entirely to specify a component name, and we want to give back a meaningful error that looks
     // correct when applied in the context of `#[configurable_component(...)]`.
-    if attr.tokens.is_empty() {
+    if attr.into_token_stream().is_empty() {
         return Err(Error::new(
             attr.span(),
             format!(

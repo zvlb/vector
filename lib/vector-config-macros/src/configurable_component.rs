@@ -1,10 +1,11 @@
+use darling::ast::NestedMeta;
 use darling::{Error, FromMeta};
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
 use quote::{quote, quote_spanned};
 use syn::{
     parse_macro_input, parse_quote, parse_quote_spanned, punctuated::Punctuated, spanned::Spanned,
-    token::Comma, AttributeArgs, DeriveInput, Lit, LitStr, Meta, MetaList, NestedMeta, Path,
+    token::Comma, DeriveInput, Lit, LitStr, Meta, MetaList, Path,
 };
 use vector_config_common::{
     constants::ComponentType, human_friendly::generate_human_friendly_string,
@@ -157,7 +158,7 @@ struct Options {
 }
 
 impl FromMeta for Options {
-    fn from_list(items: &[syn::NestedMeta]) -> darling::Result<Self> {
+    fn from_list(items: &[darling::ast::NestedMeta]) -> darling::Result<Self> {
         let mut typed_component = None;
         let mut no_ser = false;
         let mut no_deser = false;
@@ -255,10 +256,9 @@ impl Options {
 }
 
 pub fn configurable_component_impl(args: TokenStream, item: TokenStream) -> TokenStream {
-    let args = parse_macro_input!(args as AttributeArgs);
     let input = parse_macro_input!(item as DeriveInput);
 
-    let options = match Options::from_list(&args) {
+    let options = match NestedMeta::parse_meta_list(args.into()) {
         Ok(v) => v,
         Err(e) => {
             return TokenStream::from(e.write_errors());

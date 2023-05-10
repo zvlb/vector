@@ -2,9 +2,10 @@ use darling::{
     util::{Flag, Override, SpannedValue},
     FromAttributes,
 };
-use proc_macro2::Span;
+use proc_macro2::{Span, TokenStream};
+use quote::ToTokens;
 use serde_derive_internals::ast as serde_ast;
-use syn::{parse_quote, spanned::Spanned, ExprPath, Ident};
+use syn::{parse_quote, ExprPath, Ident};
 use vector_config_common::validation::Validation;
 
 use super::{
@@ -174,7 +175,7 @@ impl<'a> Field<'a> {
     /// variants, to simply document themselves at the container/variant level and avoid needing to
     /// document that inner field which itself needs no further title/description.
     pub fn transparent(&self) -> bool {
-        self.attrs.transparent.is_some()
+        self.attrs.transparent.is_present()
     }
 
     /// Whether or not the field is deprecated.
@@ -239,12 +240,9 @@ impl<'a> Field<'a> {
     }
 }
 
-impl<'a> Spanned for Field<'a> {
-    fn span(&self) -> proc_macro2::Span {
-        match self.original.ident.as_ref() {
-            Some(ident) => ident.span(),
-            None => self.original.ty.span(),
-        }
+impl<'a> ToTokens for Field<'a> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        todo!()
     }
 }
 
@@ -300,11 +298,11 @@ impl Attributes {
             // to throw an error if they are. As we're going to forcefully mark the field as
             // transparent, there's no reason to allow setting derived/transparent manually, as it
             // only leads to boilerplate and potential confusion.
-            if self.transparent.is_some() {
+            if self.transparent.is_present() {
                 return Err(err_field_implicit_transparent(&self.transparent));
             }
 
-            if self.derived.is_some() {
+            if self.derived.is_present() {
                 return Err(err_field_implicit_transparent(&self.derived));
             }
 
@@ -339,8 +337,8 @@ impl Attributes {
         // like a field that is flattened or not visible, it makes no sense to require a description or title for fields
         // in a virtual newtype.
         if self.description.is_none()
-            && !self.derived.is_some()
-            && !self.transparent.is_some()
+            && !self.derived.is_present()
+            && !self.transparent.is_present()
             && self.visible
             && !self.flatten
             && !is_virtual_newtype

@@ -546,7 +546,7 @@ checksum = "0e97ce7de6cf12de5d7226c73f5ba9811622f4db3a5b91b55c53e987e5f91cba"
 dependencies = [
  "proc-macro2 1.0.56",
  "quote 1.0.27",
- "syn 2.0.10",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -568,7 +568,7 @@ checksum = "16e62a023e7c117e27523144c5d2459f4397fcc3cab0085af8e2224f643a0193"
 dependencies = [
  "proc-macro2 1.0.56",
  "quote 1.0.27",
- "syn 2.0.10",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -585,7 +585,7 @@ checksum = "b9ccdd8f2a161be9bd5c023df56f1b2a0bd1d83872ae53b71a84a12c9bf6e842"
 dependencies = [
  "proc-macro2 1.0.56",
  "quote 1.0.27",
- "syn 2.0.10",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -1967,7 +1967,7 @@ dependencies = [
  "heck 0.4.0",
  "proc-macro2 1.0.56",
  "quote 1.0.27",
- "syn 2.0.10",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -2430,7 +2430,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd4056f63fce3b82d852c3da92b08ea59959890813a7f4ce9c0ff85b10cf301b"
 dependencies = [
  "quote 1.0.27",
- "syn 2.0.10",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -2526,6 +2526,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "darling"
+version = "0.20.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0558d22a7b463ed0241e993f76f09f30b126687447751a8638587b864e4b3944"
+dependencies = [
+ "darling_core 0.20.1",
+ "darling_macro 0.20.1",
+]
+
+[[package]]
 name = "darling_core"
 version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2554,6 +2564,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "darling_core"
+version = "0.20.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab8bfa2e259f8ee1ce5e97824a3c55ec4404a0d772ca7fa96bf19f0752a046eb"
+dependencies = [
+ "fnv",
+ "ident_case",
+ "proc-macro2 1.0.56",
+ "quote 1.0.27",
+ "strsim 0.10.0",
+ "syn 2.0.15",
+]
+
+[[package]]
 name = "darling_macro"
 version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2573,6 +2597,17 @@ dependencies = [
  "darling_core 0.14.2",
  "quote 1.0.27",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "darling_macro"
+version = "0.20.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29a358ff9f12ec09c3e61fef9b5a9902623a695a46a917b07f269bff1445611a"
+dependencies = [
+ "darling_core 0.20.1",
+ "quote 1.0.27",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -3007,7 +3042,7 @@ checksum = "5e9a1f9f7d83e59740248a6e14ecf93929ade55027844dfcea78beafccc15745"
 dependencies = [
  "proc-macro2 1.0.56",
  "quote 1.0.27",
- "syn 2.0.10",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -3394,7 +3429,7 @@ checksum = "89ca545a94061b6365f2c7355b4b32bd20df3ff95f02da9329b34ccc3bd6ee72"
 dependencies = [
  "proc-macro2 1.0.56",
  "quote 1.0.27",
- "syn 2.0.10",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -4933,7 +4968,7 @@ checksum = "ddece26afd34c31585c74a4db0630c376df271c285d682d1e55012197830b6df"
 dependencies = [
  "proc-macro2 1.0.56",
  "quote 1.0.27",
- "syn 2.0.10",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -5447,7 +5482,7 @@ dependencies = [
  "proc-macro-crate 1.2.1",
  "proc-macro2 1.0.56",
  "quote 1.0.27",
- "syn 2.0.10",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -7377,18 +7412,18 @@ checksum = "a2a0814352fd64b58489904a44ea8d90cb1a91dcb6b4f5ebabc32c8318e93cb6"
 dependencies = [
  "proc-macro2 1.0.56",
  "quote 1.0.27",
- "syn 2.0.10",
+ "syn 2.0.15",
 ]
 
 [[package]]
 name = "serde_derive_internals"
-version = "0.26.0"
+version = "0.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85bf8229e7920a9f636479437026331ce11aa132b4dde37d121944a44d6e5f3c"
+checksum = "536533b0a3a273b7ecff98c3f86d6ed16e99b58460ca2391d17f1b80bafe595b"
 dependencies = [
  "proc-macro2 1.0.56",
  "quote 1.0.27",
- "syn 1.0.109",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -7976,9 +8011,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.10"
+version = "2.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5aad1363ed6d37b84299588d62d3a7d95b5a5c2d9aad5c85609fda12afaa1f40"
+checksum = "a34fcf3e8b60f57e6a14301a2e916d323af98b0ea63c599441eec8558660c822"
 dependencies = [
  "proc-macro2 1.0.56",
  "quote 1.0.27",
@@ -8158,7 +8193,7 @@ checksum = "f9456a42c5b0d803c8cd86e73dd7cc9edd429499f37a3550d286d5e86720569f"
 dependencies = [
  "proc-macro2 1.0.56",
  "quote 1.0.27",
- "syn 2.0.10",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -8303,7 +8338,7 @@ checksum = "630bdcf245f78637c13ec01ffae6187cca34625e8c63150d424b59e55af2675e"
 dependencies = [
  "proc-macro2 1.0.56",
  "quote 1.0.27",
- "syn 2.0.10",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -8898,7 +8933,7 @@ checksum = "2c3e1c30cedd24fc597f7d37a721efdbdc2b1acae012c1ef1218f4c7c2c0f3e7"
 dependencies = [
  "proc-macro2 1.0.56",
  "quote 1.0.27",
- "syn 2.0.10",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -9452,14 +9487,14 @@ name = "vector-config-common"
 version = "0.1.0"
 dependencies = [
  "convert_case 0.6.0",
- "darling 0.13.4",
+ "darling 0.20.1",
  "indexmap",
  "once_cell",
  "proc-macro2 1.0.56",
  "quote 1.0.27",
  "serde",
  "serde_json",
- "syn 2.0.10",
+ "syn 2.0.15",
  "tracing 0.1.37",
 ]
 
@@ -9467,12 +9502,12 @@ dependencies = [
 name = "vector-config-macros"
 version = "0.1.0"
 dependencies = [
- "darling 0.13.4",
+ "darling 0.20.1",
  "proc-macro2 1.0.56",
  "quote 1.0.27",
  "serde",
  "serde_derive_internals",
- "syn 2.0.10",
+ "syn 2.0.15",
  "vector-config",
  "vector-config-common",
 ]
@@ -9952,7 +9987,7 @@ dependencies = [
  "once_cell",
  "proc-macro2 1.0.56",
  "quote 1.0.27",
- "syn 2.0.10",
+ "syn 2.0.15",
  "wasm-bindgen-shared",
 ]
 
@@ -9986,7 +10021,7 @@ checksum = "4783ce29f09b9d93134d41297aded3a712b7b979e9c6f28c32cb88c973a94869"
 dependencies = [
  "proc-macro2 1.0.56",
  "quote 1.0.27",
- "syn 2.0.10",
+ "syn 2.0.15",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]

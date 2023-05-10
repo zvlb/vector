@@ -1,7 +1,7 @@
 use darling::FromMeta;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
-use syn::{Lit, Meta};
+use syn::{Expr, Lit, Meta};
 
 use crate::{
     num::{ERR_NUMERIC_OUT_OF_RANGE, NUMERIC_ENFORCED_LOWER_BOUND, NUMERIC_ENFORCED_UPPER_BOUND},
@@ -337,16 +337,19 @@ fn maybe_float_or_int(meta: &Meta) -> darling::Result<Option<f64>> {
     let result = match meta {
         Meta::Path(_) => Err(darling::Error::unexpected_type("path")),
         Meta::List(_) => Err(darling::Error::unexpected_type("path")),
-        Meta::NameValue(nv) => match &nv.lit {
-            Lit::Str(s) => {
-                let s = s.value();
-                s.as_str()
-                    .parse()
-                    .map_err(|_| darling::Error::unknown_value(s.as_str()))
-            }
-            Lit::Int(i) => i.base10_parse::<f64>().map_err(Into::into),
-            Lit::Float(f) => f.base10_parse::<f64>().map_err(Into::into),
-            lit => Err(darling::Error::unexpected_lit_type(lit)),
+        Meta::NameValue(nv) => match &nv.value {
+            Expr::Lit(exprlit) => match &exprlit.lit {
+                Lit::Str(s) => {
+                    let s = s.value();
+                    s.as_str()
+                        .parse()
+                        .map_err(|_| darling::Error::unknown_value(s.as_str()))
+                }
+                Lit::Int(i) => i.base10_parse::<f64>().map_err(Into::into),
+                Lit::Float(f) => f.base10_parse::<f64>().map_err(Into::into),
+                lit => Err(darling::Error::unexpected_lit_type(lit)),
+            },
+            expr => Err(darling::Error::unexpected_expr_type(expr)),
         },
     };
 

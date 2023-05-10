@@ -1,7 +1,8 @@
+use darling::ast::NestedMeta;
 use darling::error::Accumulator;
 use quote::{quote, ToTokens};
 use serde_derive_internals::{attr as serde_attr, Ctxt};
-use syn::{spanned::Spanned, Attribute, ExprPath, Lit, Meta, MetaNameValue, NestedMeta};
+use syn::{spanned::Spanned, Attribute, Expr, ExprPath, Lit, Meta, MetaNameValue};
 
 const ERR_FIELD_MISSING_DESCRIPTION: &str = "field must have a description -- i.e. `/// This is a widget...` or `#[configurable(description = \"...\")] -- or derive it from the underlying type of the field by specifying `#[configurable(derived)]`";
 const ERR_FIELD_IMPLICIT_TRANSPARENT: &str =
@@ -15,11 +16,15 @@ pub fn try_extract_doc_title_description(
     let doc_comments = attributes
         .iter()
         // We only care about `doc` attributes.
-        .filter(|attribute| attribute.path.is_ident("doc"))
+        .filter(|attribute| attribute.path().is_ident("doc"))
         // Extract the value of the attribute if it's in the form of `doc = "..."`.
         .filter_map(|attribute| match attribute.parse_meta() {
             Ok(Meta::NameValue(MetaNameValue {
-                lit: Lit::Str(s), ..
+                value:
+                    Expr::Lit(syn::ExprLit {
+                        lit: Lit::Str(s), ..
+                    }),
+                ..
             })) => Some(s.value()),
             _ => None,
         })
@@ -209,12 +214,12 @@ fn find_name_value_attribute(
     attributes
         .iter()
         // Only take attributes whose name matches `attr_name`.
-        .filter(|attr| path_matches(&attr.path, attr_name))
+        .filter(|attr| path_matches(&attr.path(), attr_name))
         // Make sure the contents actually parse as a normal structured attribute.
-        .filter_map(|attr| attr.parse_meta().ok())
+        .filter_map(|attr| Some(&attr.meta))
         // Derive macro helper attributes will always be in the list form.
         .filter_map(|meta| match meta {
-            Meta::List(ml) => Some(ml.nested.into_iter()),
+            Meta::List(ml) => Some(ml.parse_nested_meta(|meta| todo!()).into_iter()),
             _ => None,
         })
         .flatten()

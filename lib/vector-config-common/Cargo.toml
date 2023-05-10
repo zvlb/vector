@@ -6,7 +6,7 @@ license = "MPL-2.0"
 
 [dependencies]
 convert_case = { version = "0.6", default-features = false }
-darling = { version = "0.13", default-features = false, features = ["suggestions"] }
+darling = { version = "0.20.1", default-features = false, features = ["suggestions"] }
 indexmap = { version = "1.9", default-features = false, features = ["serde"] }
 once_cell = { version = "1", default-features = false, features = ["std"] }
 proc-macro2 = { version = "1.0", default-features = false }
